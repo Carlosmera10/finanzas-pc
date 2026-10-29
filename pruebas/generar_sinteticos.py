@@ -92,3 +92,93 @@ if __name__ == "__main__":
     xml2003()
     csv_1252()
     print("Archivos generados en", DIR)
+
+
+# ---------------------------------------------------------------------------
+# Copias SINTÉTICAS con la misma estructura que los archivos reales de cada banco
+# (datos inventados; los números de cuenta y tarjeta son ceros).
+# ---------------------------------------------------------------------------
+TARJETA = "0000000000001111"
+
+
+def bbva_cuenta(nombre, filas, saldo_final):
+    """filas en orden descendente (más reciente primero): (fecha valor, fecha, concepto, movimiento, importe)."""
+    wb = Workbook(); ws = wb.active; ws.title = "Informe BBVA"
+    ws["D2"] = "Últimos movimientos"
+    ws["D3"] = "Fecha de generación del informe: 29/10/2026"
+    ws.append([])
+    for col, txt in zip("BCDEFGHIJ", ["F.Valor", "Fecha", "Concepto", "Movimiento", "Importe", "Divisa", "Disponible", "Divisa", "Observaciones"]):
+        ws[f"{col}5"] = txt
+    saldo = saldo_final
+    for i, (fv, f, c, m, imp) in enumerate(filas):
+        r = 6 + i
+        for col, v in zip("BCDEFGHIJ", [fv, f, c, m, imp, "EUR", round(saldo, 2), "EUR", m.upper()]):
+            ws[f"{col}{r}"] = v
+        saldo = round(saldo - imp, 2)
+    wb.save(os.path.join(DIR, nombre))
+
+
+SEP = [  # más reciente primero
+    ("30/09/2026", "30/09/2026", "Adeudo colegio ficticio", "Adeudo nº 0000000000000002", -100.00),
+    ("30/09/2026", "30/09/2026", "Adeudo colegio ficticio", "Adeudo nº 0000000000000001", -100.00),
+    ("28/09/2026", "28/09/2026", "Abono de nómina", "Empresa ficticia", 2000.00),
+    ("27/09/2026", "28/09/2026", "Bizum", "Enviado: cena amigos", -20.00),
+    ("15/09/2026", "15/09/2026", "Ret. efectivo  a debito con tarj.  ", "Otros", -40.00),
+    ("05/09/2026", "04/09/2026", "Adeudo mensual de tarjeta", TARJETA, -55.30),
+    ("01/09/2026", "01/09/2026", "Transferencia realizada", "Transferencia mensual ing", -1000.00),
+]
+OCT = [
+    ("05/10/2026", "05/10/2026", "Adeudo de telefonica", "Adeudo nº 0000000000000003", -30.00),
+    ("02/10/2026", "02/10/2026", "Bizum", "Recibido: devolucion", 15.00),
+] + SEP[:3]  # se solapa con los tres últimos de septiembre
+bbva_cuenta("bbva-cuenta-septiembre.xlsx", SEP, 5000.00)
+bbva_cuenta("bbva-cuenta-octubre.xlsx", OCT, 5000.00 - 30.00 + 15.00)
+
+
+def bbva_tarjeta():
+    wb = Workbook(); ws = wb.active; ws.title = "Informe BBVA"
+    ws["D2"] = "Listado de movimientos"
+    ws["D3"] = "Fecha de generación del informe: 29/10/2026"
+    for col, txt in zip("BCDEF", ["Fecha", "Tarjeta", "Concepto", "Importe", "Divisa"]):
+        ws[f"{col}5"] = txt
+    filas = [
+        ("26/09/2026", "Mercadona c. ma", -12.40),
+        ("20/09/2026", "Cafeteria plaza", -1.80),
+        ("20/09/2026", "Cafeteria plaza", -1.80),  # dos cafés iguales el mismo día
+        ("05/09/2026", "Recibo mes anterior", 55.30),
+        ("28/08/2026", "Lidl ejemplo", -55.30),
+    ]
+    for i, (f, c, imp) in enumerate(filas):
+        for col, v in zip("BCDEF", [f, TARJETA, c, imp, "€"]):
+            ws[f"{col}{6 + i}"] = v
+    wb.save(os.path.join(DIR, "bbva-tarjeta.xlsx"))
+
+
+def ing_xls():
+    """.xls binario de Excel 97-2003, como el que descarga ING."""
+    import xlwt
+    wb = xlwt.Workbook(encoding="utf-8"); ws = wb.add_sheet("Movimientos")
+    fecha = xlwt.easyxf(num_format_str="dd/MM/yyyy")
+    ws.write(0, 0, "Movimientos de la Cuenta"); ws.write(0, 2, "  Número de cuenta:"); ws.write(0, 3, "0000 0000 0000 00009999")
+    ws.write(1, 2, "  Titular:"); ws.write(1, 3, "TITULAR FICTICIO")
+    ws.write(2, 2, "  Fecha exportación:"); ws.write(2, 3, "29/10/2026 21:39h")
+    for j, t in enumerate(["F. VALOR", "CATEGORÍA", "SUBCATEGORÍA", "DESCRIPCIÓN", "COMENTARIO", "IMPORTE (€)", "SALDO (€)"]):
+        ws.write(3, j, t)
+    filas = [  # más reciente primero
+        (dt.date(2026, 10, 3), "Ventajas ING", "Otras Ventajas ING", "Incentivo por compra ING", 3.10),
+        (dt.date(2026, 10, 3), "Vehículo y transporte", "Gasolina", "Compra ING GALP E S GALP EJEMPLO", -60.25),
+        (dt.date(2026, 9, 1), "Otros ingresos", "Ingresos de otras entidades", "Transferencia recibida de TITULAR FICTICIO", 1000.00),
+        (dt.date(2026, 8, 20), "Otros gastos", "Otros seguros", "Recibo MUTUA FICTICIA", -30.05),
+    ]
+    saldo = 1500.00
+    for i, (f, cat, sub, desc, imp) in enumerate(filas):
+        r = 4 + i
+        ws.write(r, 0, f, fecha); ws.write(r, 1, cat); ws.write(r, 2, sub); ws.write(r, 3, desc)
+        ws.write(r, 5, imp); ws.write(r, 6, round(saldo, 2))
+        saldo = round(saldo - imp, 2)
+    wb.save(os.path.join(DIR, "ing-cuenta.xls"))
+
+
+bbva_tarjeta()
+ing_xls()
+print("Archivos de bancos generados")

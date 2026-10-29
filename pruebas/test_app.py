@@ -83,7 +83,15 @@ UNIT_JS = r'''
   eq(F.parseCatLines('Comida > Súper\nCasa;Luz\n\nOcio'), [{parent:'Comida',child:'Súper'},{parent:'Casa',child:'Luz'},{parent:'Ocio',child:null}], 'líneas de categorías');
   // CSV de Bluecoins
   eq(F.bluecoinsCsv([{type:'e',date:'01/09/2026',payee:'Café, bar',amount:'-1.80',parent:'Comida',category:'Cafés',accountType:'Bank',account:'Prueba',notes:'',labels:'',status:'',split:''}]),
-     'Type,Date,Item or Payee,Amount,Parent Category,Category,Account Type,Account,Notes,Label,Status,Split\r\ne,01/09/2026,"Café, bar",-1.80,Comida,Cafés,Bank,Prueba,,,,\r\n', 'CSV de Bluecoins');
+     '(1)Type,(2)Date,(3)Item or Payee,(4)Amount,(5)Category Type,(6)Category,(7)Account Type,(8)Account,(9)Notes,(10) Label,(11) Status,(12) Split\r\ne,01/09/2026,"Café, bar",-1.80,Comida,Cafés,Bank,Prueba,,,,\r\n', 'CSV de Bluecoins');
+  // RK de Excel 97-2003
+  eq([F.rkValue(0x00000006), F.rkValue(310*4+3), F.rkValue((-5*4+2)>>>0)], [1, 3.1, -5], 'números RK');
+  // Reglas
+  const r = F.normRule({id:'r', text:'mercadona', mode:'contiene', set:{categoryId:'c'}});
+  eq([F.ruleMatches(r, {rawConcept:'Pago en MERCADONA Madrid', amountCents:-100}), F.ruleMatches({...r, sign:'pos'}, {rawConcept:'MERCADONA', amountCents:-100}),
+      F.ruleMatches({...r, mode:'empieza'}, {rawConcept:'Pago en MERCADONA', amountCents:-1})], [true, false, false], 'coincidencia de reglas');
+  eq(F.suggestRuleText({rawConcept:'Adeudo de telefonica · Adeudo nº 2026295000547127'}), 'TELEFONICA', 'texto propuesto para la regla');
+  eq(F.suggestRuleText({rawConcept:'Bizum · Enviado: cena amigos'}), 'ENVIADO: CENA AMIGOS', 'regla de un Bizum');
   return out;
 }
 '''
@@ -122,7 +130,27 @@ async () => {
   eq(F.parseAmount(r.sheets[0].rows[8][2].v), -123456, 'csv: importe');
   // Binario antiguo
   r = await F.readSpreadsheetBytes(new Uint8Array([0xD0,0xCF,0x11,0xE0,0xA1,0xB1,0x1A,0xE1,0,0]));
-  eq(r.format, 'biff', 'biff: se detecta y se avisa');
+  eq([r.format, !!r.error], ['biff', true], 'biff dañado: se avisa');
+  // .xls binario de Excel 97-2003 (como el de ING)
+  r = await leer('ing-cuenta.xls');
+  eq([r.format, r.error], ['biff', undefined], 'biff: formato');
+  rows = r.sheets[0].rows;
+  eq(rows[0][3].v, '0000 0000 0000 00009999', 'biff: texto');
+  eq([rows[4][0].t, F.parseDateCell(rows[4][0].v)], ['d', '2026-10-03'], 'biff: fecha');
+  eq([F.parseAmount(rows[4][5].raw, {decimal:'.'}), F.parseAmount(rows[5][5].raw, {decimal:'.'})], [310, -6025], 'biff: importes');
+  eq(rows[3].map(c => c && c.v).slice(0, 4), ['F. VALOR', 'CATEGORÍA', 'SUBCATEGORÍA', 'DESCRIPCIÓN'], 'biff: cabeceras con acentos');
+  // Importadores
+  const an = async n => F.analyzeFile({sheets: (await leer(n)).sheets});
+  let a = await an('bbva-cuenta-septiembre.xlsx');
+  eq([a.importerId, a.rows.length, a.from, a.to, a.chain.breaks.length, a.chain.opening, a.chain.closing], ['bbva_cuenta', 7, '2026-09-01', '2026-09-30', 0, 431530, 500000], 'BBVA cuenta: lectura y saldo encadenado');
+  eq([a.rows[3].date, a.rows[3].valueDate, a.rows[3].rawConcept], ['2026-09-28', '2026-09-27', 'Bizum · Enviado: cena amigos'], 'BBVA cuenta: fecha, fecha valor y concepto');
+  eq(a.rows.filter(x => x.settlementCard).length, 1, 'BBVA cuenta: detecta la liquidación de la tarjeta');
+  a = await an('bbva-tarjeta.xlsx');
+  eq([a.importerId, a.rows.length, a.ident.slice(-4), a.rows.filter(x => x.cardReceipt).length], ['bbva_tarjeta', 5, '1111', 1], 'BBVA tarjeta: lectura, tarjeta y recibo');
+  a = await an('ing-cuenta.xls');
+  eq([a.importerId, a.rows.length, a.ident.slice(-4), a.chain.breaks.length, a.rows[0].bankCategory], ['ing_cuenta', 4, '9999', 0, 'Ventajas ING › Otras Ventajas ING'], 'ING: lectura, cuenta y categoría del banco');
+  a = await an('sintetico-xlsx.xlsx');
+  eq(a, null, 'un archivo de otro formato no se confunde con un banco');
   return out;
 }
 """
@@ -229,7 +257,7 @@ def flujo_pc(browser):
 
     # Importar: lectura y vista previa
     p.click(".nav-btn[data-view=importar]")
-    p.set_input_files("#fileInput", [os.path.join(SINT, n) for n in sorted(os.listdir(SINT))])
+    p.set_input_files("#fileInput", [os.path.join(SINT, n) for n in sorted(os.listdir(SINT)) if n.startswith("sintetico")])
     p.wait_for_selector(".file-item >> nth=3")
     ok(p.locator(".file-item").count() == 4, "cuatro archivos leídos")
     ok(p.locator(".file-item .chip.bad").count() == 0, "ninguno da error de lectura")
@@ -266,7 +294,7 @@ def flujo_pc(browser):
     p.reload()
     ok(p.evaluate("() => document.documentElement.dataset.theme") == "dark", "el tema se aplica al abrir (sin parpadeo)")
 
-    for v in ["resumen", "movimientos", "importar", "controles", "cuentas", "categorias", "ajustes", "instrucciones"]:
+    for v in ["resumen", "movimientos", "importar", "controles", "cuentas", "categorias", "reglas", "ajustes", "instrucciones"]:
         p.click(f".nav-btn[data-view={v}]")
         sin_desborde(p, "PC " + v)
     ok(not errores, "sin errores en la consola (PC): " + "; ".join(errores[:3]))
@@ -275,13 +303,99 @@ def flujo_pc(browser):
     return estado
 
 
+def importar(p, nombre):
+    p.set_input_files("#fileInput", os.path.join(SINT, nombre))
+    p.wait_for_selector(f".file-item[aria-current=true] >> text={nombre}")
+
+
+def flujo_importacion(browser):
+    errores = []
+    ctx, p = nueva_pagina(browser, 1440, 900, errores)
+    print("Importación de bancos")
+    p.click(".nav-btn[data-view=importar]")
+    # BBVA septiembre: la cuenta se crea desde la revisión
+    importar(p, "bbva-cuenta-septiembre.xlsx")
+    ok(p.is_disabled("[data-act=rv-confirm]"), "sin cuenta no se puede confirmar")
+    p.click("[data-act=rv-new-acc]")
+    ok(p.input_value("#accName") == "BBVA" and p.input_value("#accBank") == "bbva", "la cuenta nueva viene rellenada")
+    p.click("#accForm button[type=submit]")
+    p.wait_for_function("document.querySelector('#rvAcc') && document.querySelector('#rvAcc').value !== ''")
+    ok(p.is_checked("#rvOpening"), "propone el saldo de apertura deducido del archivo")
+    p.screenshot(path=os.path.join(CAPT, "pc-revision.png"))
+    p.click("[data-act=rv-confirm]")
+    p.wait_for_selector("text=7 movimientos importados en BBVA · el saldo cuadra")
+    ok(True, "BBVA septiembre importado y el saldo cuadra")
+    # BBVA octubre: se solapa con septiembre
+    importar(p, "bbva-cuenta-octubre.xlsx")
+    txt = p.inner_text("#view")
+    ok("2 nuevos" in txt and "3 ya estaban" in txt, "detecta los solapados (2 nuevos, 3 ya estaban)")
+    p.click("[data-act=rv-confirm]")
+    p.wait_for_selector("text=2 movimientos importados en BBVA · el saldo cuadra")
+    ok(True, "BBVA octubre sin duplicados y el saldo cuadra")
+    # Tarjeta: cuenta nueva vinculada a BBVA; el recibo se empareja con la liquidación
+    importar(p, "bbva-tarjeta.xlsx")
+    p.click("[data-act=rv-new-acc]")
+    ok(p.input_value("#accHints") == "1111" and p.input_value("#accKind") == "tarjeta_credito", "la tarjeta viene con sus 4 dígitos")
+    p.click("#accForm button[type=submit]")
+    p.wait_for_selector("text=5 nuevos")
+    p.click("[data-act=rv-confirm]")
+    p.wait_for_selector("text=5 movimientos importados")
+    estado = p.evaluate("""() => { const S = window.__fin.S, ms = [...S.movements.values()];
+      const liq = ms.filter(m => m.kind === 'transferencia' && Math.abs(m.amountCents) === 5530);
+      const cafes = ms.filter(m => m.rawConcept === 'Cafeteria plaza').length;
+      return {pares: liq.length === 2 && liq[0].transferPairId && liq[0].transferPairId === liq[1].transferPairId, cafes}; }""")
+    ok(estado["pares"], "la liquidación de la tarjeta queda emparejada (cuenta ↔ tarjeta)")
+    ok(estado["cafes"] == 2, "dos cafés iguales el mismo día se mantienen los dos")
+    # ING: .xls binario; la transferencia de BBVA se empareja
+    importar(p, "ing-cuenta.xls")
+    p.click("[data-act=rv-new-acc]")
+    p.click("#accForm button[type=submit]")
+    p.wait_for_selector("text=4 nuevos")
+    ok("Se empareja con un movimiento de BBVA" in p.inner_text("#view"), "la revisión anuncia la transferencia con BBVA")
+    p.click("[data-act=rv-confirm]")
+    p.wait_for_selector("text=4 movimientos importados en ING · el saldo cuadra")
+    par = p.evaluate("""() => { const ms = [...window.__fin.S.movements.values()].filter(m => Math.abs(m.amountCents) === 100000);
+      return ms.length === 2 && ms.every(m => m.kind === 'transferencia') && ms[0].transferPairId === ms[1].transferPairId; }""")
+    ok(par, "transferencia BBVA → ING emparejada")
+    # Volver a importar lo mismo no duplica nada
+    n = p.evaluate("() => window.__fin.S.movements.size")
+    p.evaluate("() => { window.__fin.imp.files = []; }")
+    importar(p, "bbva-cuenta-septiembre.xlsx")
+    ok("0 nuevos" in p.inner_text("#view") and "Este archivo ya se importó" in p.inner_text("#view"), "reimportar el mismo archivo: 0 nuevos")
+    ok(p.evaluate("() => window.__fin.S.movements.size") == n, "no se ha añadido nada")
+    # Crear una regla desde un movimiento
+    p.evaluate("() => window.__fin.commit('', cs => { cs.put('categories', {id:'p1', parent:null, name:'Compras', kind:'gasto'}); cs.put('categories', {id:'c1', parent:'p1', name:'Supermercado', kind:'gasto'}); }, {noUndo:true})")
+    p.click(".nav-btn[data-view=movimientos]")
+    p.fill("#movSearch", "mercadona")
+    p.wait_for_timeout(300)
+    p.click("tr[data-mov]")
+    p.click("#movRule")
+    p.wait_for_selector("#ruleDlg[open]")
+    ok(p.input_value("#ruleText") == "MERCADONA C. MA", "la regla propone el texto del concepto")
+    p.select_option("#ruleCat", "c1")
+    p.fill("#rulePayee", "Mercadona")
+    p.click("#ruleForm button[type=submit]")
+    p.wait_for_selector("text=Regla creada y aplicada a 1 movimientos")
+    ok(True, "regla creada y aplicada")
+    # Deshacer la importación de ING: la transferencia de BBVA vuelve a como estaba
+    p.click(".nav-btn[data-view=importar]")
+    p.click("[data-act=undo-import] >> nth=0")
+    p.click("#cfmOk")
+    p.wait_for_selector("text=Importación deshecha")
+    vuelta = p.evaluate("""() => { const m = [...window.__fin.S.movements.values()].find(m => m.amountCents === -100000); return [m.kind, m.transferPairId]; }""")
+    ok(vuelta == ["gasto", None], "al deshacer, la transferencia de BBVA vuelve a ser como antes")
+    sin_desborde(p, "PC importar")
+    ok(not errores, "sin errores en la consola (importación): " + "; ".join(errores[:3]))
+    ctx.close()
+
+
 def flujo_estrecho(browser, estado):
     errores = []
     ctx, p = nueva_pagina(browser, 361, 780, errores)
     print("Ventana estrecha")
     # Cargar los mismos datos para ver las vistas llenas
     p.evaluate("""(d) => window.__fin.commit('', cs => { for (const s of Object.keys(d.stores)) for (const r of d.stores[s]) cs.put(s, r); }, {noUndo:true})""", estado)
-    for v in ["resumen", "movimientos", "importar", "controles", "cuentas", "categorias", "ajustes", "instrucciones"]:
+    for v in ["resumen", "movimientos", "importar", "controles", "cuentas", "categorias", "reglas", "ajustes", "instrucciones"]:
         p.click("#menuBtn")
         p.click(f".nav-btn[data-view={v}]")
         p.wait_for_timeout(250)
@@ -299,6 +413,7 @@ def flujo_estrecho(browser, estado):
 
 with sync_playwright() as pw:
     b = pw.chromium.launch()
+    flujo_importacion(b)
     est = flujo_pc(b)
     flujo_estrecho(b, est)
     b.close()
