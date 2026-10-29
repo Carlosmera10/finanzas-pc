@@ -420,7 +420,7 @@ dialog::backdrop{background:rgba(15,20,35,.45)}
       <label class="fld full">Identificadores en los archivos del banco<input class="inp" type="text" id="accHints" autocomplete="off" placeholder="1234, ES12…5678"></label>
       <label class="fld">Nombre en Bluecoins<input class="inp" type="text" id="accBcName" maxlength="80" autocomplete="off"></label>
       <label class="fld">Tipo en Bluecoins<input class="inp" type="text" id="accBcType" list="bcTypeList" maxlength="40" autocomplete="off"></label>
-      <div class="fld full"><label class="chk"><input type="checkbox" id="accArchived">Archivada</label></div>
+      <div class="fld full"><label class="chk"><input type="checkbox" id="accInStats">Sus ingresos y gastos cuentan en el resumen y las estadísticas</label><label class="chk"><input type="checkbox" id="accArchived">Archivada</label></div>
     </div>
   </div>
   <div class="dlg-foot">
@@ -488,7 +488,7 @@ dialog::backdrop{background:rgba(15,20,35,.45)}
   </div>
 </form></dialog>
 
-<input type="file" id="fileInput" multiple accept=".xls,.xlsx,.csv,.txt,.html,.htm,.xml" hidden>
+<input type="file" id="fileInput" multiple accept=".xls,.xlsx,.csv,.txt,.html,.htm,.xml,.json" hidden>
 <input type="file" id="restoreInput" accept=".json,application/json" hidden>
 <div id="toastWrap" aria-live="polite"></div>
 
@@ -501,7 +501,7 @@ const STORES=['accounts','movements','imports','rules','categories','checks','ex
 const META_NO_BACKUP=new Set(['importFolder']);
 const PAGE=200;
 const BANKS={bbva:'BBVA',ing:'ING',tr:'Trade Republic',otro:'Otro'};
-const ACC_KINDS={corriente:'Cuenta corriente',ahorro:'Ahorro / remunerada',tarjeta_debito:'Tarjeta de débito',tarjeta_credito:'Tarjeta de crédito',inversion:'Inversión',efectivo:'Efectivo'};
+const ACC_KINDS={corriente:'Cuenta corriente',ahorro:'Ahorro / remunerada',tarjeta_debito:'Tarjeta de débito',tarjeta_credito:'Tarjeta de crédito',inversion:'Inversión',efectivo:'Efectivo',prestamo:'Préstamo / hipoteca'};
 const MOV_KINDS={gasto:'Gasto',ingreso:'Ingreso',transferencia:'Transferencia'};
 const VIEWS={resumen:'Resumen',movimientos:'Movimientos',importar:'Importar',controles:'Controles de saldo',cuentas:'Cuentas',categorias:'Categorías y etiquetas',reglas:'Reglas',ajustes:'Ajustes',instrucciones:'Instrucciones'};
 const VIEW_KEYS=Object.keys(VIEWS);
@@ -992,6 +992,11 @@ async function readSpreadsheetBytes(u8){
     const sheets=readHtmlTables(text);
     return {format:'html',formatLabel:'HTML con tablas',encoding,sheets,error:sheets.length?undefined:'No contiene tablas'};
   }
+  if(/^\s*\{/.test(text)){
+    let j=null; try{ j=JSON.parse(text); }catch(e){}
+    if(j&&j.app===APP_ID&&j.kind==='bluecoins-historial'&&Array.isArray(j.transactions)&&Array.isArray(j.accounts)) return {format:'bluecoins',formatLabel:'Historial de Bluecoins',encoding,sheets:[],bcHistory:j};
+    if(j&&j.app===APP_ID) return {format:'json',formatLabel:'Copia de seguridad',sheets:[],error:'Es una copia de seguridad: se restaura en Ajustes → Restaurar copia.'};
+  }
   const sep=detectSep(text);
   const rows=parseCsv(text,sep).map(r=>r.map(v=>{ const t=v.trim(); return t===''?null:{v:t,t:'s'}; }));
   while(rows.length&&rows[rows.length-1].every(c=>c==null)) rows.pop();
@@ -1015,7 +1020,7 @@ function normAccount(a){
   if(!a||typeof a!=='object'||!a.id) return null;
   return {id:str(a.id,64),name:str(a.name,80).trim()||'Sin nombre',bank:BANKS[a.bank]?a.bank:'otro',kind:ACC_KINDS[a.kind]?a.kind:'corriente',currency:'EUR',
     openingCents:isInt(a.openingCents)?a.openingCents:0,openingDate:validYMD(a.openingDate)?a.openingDate:'',
-    matchHints:Array.isArray(a.matchHints)?a.matchHints.map(x=>str(x,40).trim()).filter(Boolean).slice(0,10):[],autoLabels:normLabels(a.autoLabels),
+    matchHints:Array.isArray(a.matchHints)?a.matchHints.map(x=>str(x,40).trim()).filter(Boolean).slice(0,10):[],autoLabels:normLabels(a.autoLabels),inStats:a.inStats!==false,
     bluecoins:{name:str(a.bluecoins?.name,80).trim(),type:str(a.bluecoins?.type,40).trim()},
     linkedAccountId:a.linkedAccountId?str(a.linkedAccountId,64):null,archived:!!a.archived,order:Number.isFinite(a.order)?a.order:0,
     createdAt:str(a.createdAt,40)||nowISO(),updatedAt:str(a.updatedAt,40)};
@@ -1028,7 +1033,7 @@ function normMovement(m){
     notes:str(m.notes,2000),labels:normLabels(m.labels),bankBalanceCents:isInt(m.bankBalanceCents)?m.bankBalanceCents:null,
     pending:!!m.pending,kind,transferPairId:m.transferPairId?str(m.transferPairId,64):null,transferAccountId:m.transferAccountId?str(m.transferAccountId,64):null,
     source:['import','manual','bluecoins'].includes(m.source)?m.source:'manual',importId:m.importId?str(m.importId,64):null,
-    detail:str(m.detail,500),bankCategory:str(m.bankCategory,160),bankRef:str(m.bankRef,80),
+    detail:str(m.detail,500),bankCategory:str(m.bankCategory,160),bankRef:str(m.bankRef,80),bcRef:str(m.bcRef,400),historic:!!m.historic,
     fingerprint:str(m.fingerprint,800),occurrence:isInt(m.occurrence)&&m.occurrence>0?m.occurrence:1,
     exportId:m.exportId?str(m.exportId,64):null,changedAfterExport:!!m.changedAfterExport,reviewed:!!m.reviewed,
     createdAt:str(m.createdAt,40)||nowISO(),updatedAt:str(m.updatedAt,40)};
@@ -1188,7 +1193,7 @@ function balancesAt(upto){
     const out=new Map();
     for(const a of S.accounts.values()) out.set(a.id,a.openingCents);
     for(const m of S.movements.values()){
-      const a=S.accounts.get(m.accountId); if(!a) continue;
+      const a=S.accounts.get(m.accountId); if(!a||m.historic) continue;
       if(m.date>upto||(a.openingDate&&m.date<a.openingDate)) continue;
       out.set(a.id,out.get(a.id)+m.amountCents);
     }
@@ -1199,7 +1204,7 @@ const balanceAt=(accId,upto)=>balancesAt(upto).get(accId)??0;
 function flowsBetween(from,to){
   let inc=0, exp=0;
   for(const m of S.movements.values()){
-    if(m.date<from||m.date>to) continue;
+    if(m.date<from||m.date>to||S.accounts.get(m.accountId)?.inStats===false) continue;
     if(m.kind==='ingreso') inc+=m.amountCents; else if(m.kind==='gasto') exp-=m.amountCents;
   }
   return {inc,exp,save:inc-exp,rate:inc>0?(inc-exp)/inc:null};
@@ -1372,7 +1377,7 @@ function renderResumen(){
 
 /* ================= Vista: Movimientos ================= */
 const selMov=new Set();
-const STATE_OPTS=[['','Todos'],['sincat','Sin categoría'],['norev','Sin revisar'],['noexp','Sin exportar a Bluecoins'],['pend','Pendientes'],['manual','Manuales'],['sinpareja','Transferencias sin pareja'],['dups','Posibles duplicados'],['cambiado','Cambiados tras exportar']];
+const STATE_OPTS=[['','Todos'],['sincat','Sin categoría'],['norev','Sin revisar'],['noexp','Sin exportar a Bluecoins'],['pend','Pendientes'],['manual','Manuales'],['sinpareja','Transferencias sin pareja'],['dups','Posibles duplicados'],['cambiado','Cambiados tras exportar'],['bluecoins','Histórico de Bluecoins']];
 function filteredMovs(){
   const f=ui.mf;
   return cached('flt|'+JSON.stringify([f.acc,f.from,f.to,f.cat,f.label,f.state,f.q]),()=>{
@@ -1394,6 +1399,7 @@ function filteredMovs(){
         case 'sinpareja': if(m.kind!=='transferencia'||m.transferPairId) return false; break;
         case 'dups': if(!isDup(m)) return false; break;
         case 'cambiado': if(!m.changedAfterExport) return false; break;
+        case 'bluecoins': if(m.source!=='bluecoins') return false; break;
       }
       if(q){
         const hay=normText([movConcept(m),m.rawConcept,m.detail,m.bankCategory,m.payee,m.notes,m.labels.join(' '),catLabel(m.categoryId)].join(' ')).includes(q);
@@ -1456,8 +1462,9 @@ function movRowHtml(m){
   const flags=[];
   if(m.pending) flags.push(`<span class="warn" title="Pendiente (sin consolidar)">${icon('clock')}</span>`);
   if(m.source==='manual') flags.push(`<span title="Añadido a mano">${icon('hand')}</span>`);
+  if(m.historic) flags.push(`<span title="Histórico de Bluecoins: cuenta en las estadísticas, no en el saldo">${icon('archive')}</span>`);
   if(m.changedAfterExport) flags.push(`<span class="warn" title="Cambiado después de exportarlo a Bluecoins">${icon('alert')}</span>`);
-  else if(m.exportId) flags.push(`<span title="Exportado a Bluecoins">${icon('send')}</span>`);
+  else if(m.exportId) flags.push(`<span title="${m.exportId==='bluecoins'?'Ya está en Bluecoins':'Exportado a Bluecoins'}">${icon('send')}</span>`);
   if(m.reviewed) flags.push(`<span class="ok" title="Revisado">${icon('check-circle')}</span>`);
   const kindIc=m.kind==='transferencia'?`<span title="Transferencia${m.transferAccountId?' con '+esc(accName(m.transferAccountId)):''}">${icon('swap','ic xs')}</span> `:'';
   const cat=m.kind==='transferencia'?`<span class="chip info">${m.transferAccountId?(m.amountCents<0?'→ ':'← ')+esc(accName(m.transferAccountId)):'Transferencia'}</span>`:m.categoryId?esc(catLabel(m.categoryId)):'<span class="faint">—</span>';
@@ -1505,9 +1512,10 @@ function openMovDialog(id){
   $('movRaw').hidden=!(imported&&m.rawConcept); $('movRaw').textContent=imported?[m.rawConcept,m.detail].filter(Boolean).join('\n'):'';
   for(const b of $('movKind').querySelectorAll('button')) b.disabled=!!pairManual&&b.dataset.kind!=='transferencia';
   const chips=[];
-  if(m){ chips.push(`<span class="chip">${m.source==='manual'?'Manual':m.source==='bluecoins'?'De Bluecoins':'Importado'}</span>`);
+  if(m){ chips.push(`<span class="chip">${m.source==='manual'?'Manual':m.source==='bluecoins'?'Histórico de Bluecoins':'Importado'}</span>`);
+    if(m.historic) chips.push(`<span class="chip">${icon('archive','ic xs')}No cuenta en el saldo</span>`);
     if(m.pending) chips.push(`<span class="chip warn">${icon('clock','ic xs')}Pendiente</span>`);
-    if(m.exportId) chips.push(`<span class="chip info">${icon('send','ic xs')}Exportado a Bluecoins</span>`);
+    if(m.exportId) chips.push(`<span class="chip info">${icon('send','ic xs')}${m.exportId==='bluecoins'?'Ya está en Bluecoins':'Exportado a Bluecoins'}</span>`);
     if(m.changedAfterExport) chips.push(`<span class="chip warn">${icon('alert','ic xs')}Cambiado tras exportar</span>`);
     if(isInt(m.bankBalanceCents)) chips.push(`<span class="chip">Saldo del banco: ${money(m.bankBalanceCents)}</span>`);
     if(m.bankCategory) chips.push(`<span class="chip">${esc(m.bankCategory)}</span>`);
@@ -1904,6 +1912,194 @@ function classifyRow(r,accountId,claimed=null){
   return m;
 }
 
+/* ================= Historial de Bluecoins =================
+   Archivo JSON «bluecoins-historial» (cuentas, categorías y movimientos de Bluecoins).
+   Se cruza con lo importado del banco: lo que coincide se completa con los datos de Bluecoins; lo que queda fuera
+   de las fechas de los archivos del banco se añade como histórico (cuenta en las estadísticas, no en el saldo). */
+const BC_KIND_BY_TYPE={'Banco':'corriente','Bank':'corriente','Efectivo':'efectivo','Cash':'efectivo','Tarjeta de Crédito':'tarjeta_credito','Credit Card':'tarjeta_credito',
+  'Hipotecas':'prestamo','Préstamos':'prestamo','Inversiones':'inversion','Cuentas Virtuales':'ahorro'};
+function bcGuessBank(name){ const n=normText(name); return /\bBBVA\b/.test(n)?'bbva':/\bING\b/.test(n)?'ing':/TRADE ?REPUBLIC/.test(n)?'tr':'otro'; }
+function bcPlan(data,includeOnlyBc=false){
+  return cached('bcplan|'+data.generatedAt+'|'+includeOnlyBc,()=>{
+    const accs=accSorted(true), byBc=new Map();
+    for(const a of accs){ const k=a.bluecoins.name||a.name; if(!byBc.has(k)) byBc.set(k,[]); byBc.get(k).push(a); }
+    const done=new Set([...S.movements.values()].filter(m=>m.bcRef).flatMap(m=>m.bcRef.split(',')));
+    const txs=data.transactions.filter(t=>!done.has('bc:'+t.id));
+    const already=data.transactions.length-txs.length;
+    /* Cuentas: existentes (por su nombre en Bluecoins) o nuevas */
+    const groups=new Map(), newAccounts=[], openings=[];
+    for(const ba of data.accounts){
+      let g=byBc.get(ba.name)||[];
+      const os=data.transactions.filter(t=>t.account===ba.name&&t.type==='o');
+      const own=data.transactions.filter(t=>t.account===ba.name&&t.type!=='o');
+      const opening=os.reduce((s,t)=>s+t.amountCents,0), first=[...os,...own].reduce((d,t)=>t.date<d?t.date:d,'9999');
+      if(!g.length){
+        const kind=BC_KIND_BY_TYPE[ba.type]||'corriente';
+        const a={id:'nueva:'+ba.name,name:ba.name,bank:bcGuessBank(ba.name),kind:kind==='corriente'&&/NARANJA|DEPOSITO|AHORRO/.test(normText(ba.name))?'ahorro':kind,
+          bluecoins:{name:ba.name,type:ba.type},openingCents:opening,openingDate:first==='9999'?'':first,inStats:kind!=='prestamo',
+          archived:!own.length&&opening===0,matchHints:[],autoLabels:[]};
+        newAccounts.push(a); g=[a];
+      } else {
+        /* Cuenta sin saldo de apertura ni archivos del banco: el saldo de apertura sale de Bluecoins */
+        const main=g.find(a=>!a.kind.startsWith('tarjeta'))||g[0];
+        if(!main.openingDate&&![...S.movements.values()].some(m=>m.accountId===main.id&&m.source==='import'))
+          openings.push({id:main.id,name:main.name,cents:opening,date:first==='9999'?'':first,inStats:BC_KIND_BY_TYPE[ba.type]!=='prestamo'});
+      }
+      /* Periodo cubierto por los archivos del banco en todas las cuentas del grupo */
+      let start='', end='';
+      const imported=g.filter(a=>!String(a.id).startsWith('nueva:')).map(a=>{ const ms=[...S.movements.values()].filter(m=>m.accountId===a.id&&m.source==='import'); return ms.length?[ms.reduce((d,m)=>m.date<d?m.date:d,'9999'),ms.reduce((d,m)=>m.date>d?m.date:d,'')]:null; });
+      if(imported.length&&imported.every(Boolean)){ start=imported.reduce((d,x)=>x[0]>d?x[0]:d,''); end=imported.reduce((d,x)=>x[1]<d?x[1]:d,'9999'); }
+      groups.set(ba.name,{accounts:g,main:g.find(a=>!a.kind.startsWith('tarjeta'))||g[0],start,end,bank:g.some(a=>!String(a.id).startsWith('nueva:')&&[...S.movements.values()].some(m=>m.accountId===a.id&&m.source==='import'))});
+    }
+    /* Categorías que faltan */
+    const findCat=(kind,parent,name)=>{ const p=[...S.categories.values()].find(c=>!c.parent&&c.kind===kind&&c.name.trim()===parent.trim()); return p&&[...S.categories.values()].find(c=>c.parent===p.id&&c.name.trim()===name.trim()); };
+    const newCats=data.categories.filter(c=>!findCat(c.kind,c.parent,c.name));
+    /* Cruce con los movimientos del banco: misma cuenta, mismo importe, fecha de Bluecoins entre 4 días antes y 7 después */
+    const pool=new Map();
+    for(const m of S.movements.values()) if(m.source==='import'&&!m.bcRef){ const l=pool.get(m.amountCents); if(l) l.push(m); else pool.set(m.amountCents,[m]); }
+    const used=new Set(), matches=[], creates=[], onlyBc=[], skip=new Set();
+    /* Movimientos divididos en Bluecoins: en el banco son un único cargo por la suma de las partes */
+    const splits=new Map();
+    for(const t of txs) if(t.splitId&&t.type!=='o'&&t.type!=='t'){ if(!splits.has(t.splitId)) splits.set(t.splitId,[]); splits.get(t.splitId).push(t); }
+    for(const parts of splits.values()){
+      if(parts.length<2) continue;
+      const g=groups.get(parts[0].account); if(!g) continue;
+      const total=parts.reduce((s,t)=>s+t.amountCents,0), ids=new Set(g.accounts.map(a=>a.id)), d=parts[0].date;
+      const c=(pool.get(total)||[]).filter(m=>ids.has(m.accountId)&&!used.has(m.id)&&daysBetween(m.date,d)>=-4&&daysBetween(m.date,d)<=7)
+        .sort((a,b)=>Math.abs(daysBetween(a.date,d))-Math.abs(daysBetween(b.date,d)));
+      if(!c.length) continue;
+      used.add(c[0].id); parts.forEach(t=>skip.add(t.id));
+      const main=[...parts].sort((a,b)=>Math.abs(b.amountCents)-Math.abs(a.amountCents))[0];
+      matches.push({t:main,m:c[0],parts});
+    }
+    for(const t of txs){
+      if(t.type==='o'||skip.has(t.id)) continue;
+      const g=groups.get(t.account); if(!g) continue;
+      const ids=new Set(g.accounts.map(a=>a.id));
+      const cands=(pool.get(t.amountCents)||[]).filter(m=>ids.has(m.accountId)&&!used.has(m.id)&&daysBetween(m.date,t.date)>=-4&&daysBetween(m.date,t.date)<=7);
+      if(cands.length){ cands.sort((a,b)=>Math.abs(daysBetween(a.date,t.date))-Math.abs(daysBetween(b.date,t.date))||a.date.localeCompare(b.date)); used.add(cands[0].id); matches.push({t,m:cands[0]}); continue; }
+      if(g.bank&&g.start&&t.date>=g.start&&t.date<=g.end) onlyBc.push(t); else creates.push(t);
+    }
+    if(includeOnlyBc) creates.push(...onlyBc);
+    /* Movimientos del banco que no están en Bluecoins (sin contar las liquidaciones de tarjeta dentro de la misma cuenta de Bluecoins) */
+    let onlyBank=0;
+    for(const g of groups.values()){
+      if(!g.bank||!g.start) continue;
+      const ids=new Set(g.accounts.map(a=>a.id));
+      for(const m of S.movements.values())
+        if(m.source==='import'&&!m.bcRef&&!used.has(m.id)&&ids.has(m.accountId)&&m.date>=g.start&&m.date<=g.end&&!(m.kind==='transferencia'&&ids.has(m.transferAccountId))) onlyBank++;
+    }
+    const dates=data.transactions.map(t=>t.date).sort();
+    return {already,txCount:data.transactions.length,groups,newAccounts,openings,newCats,matches,creates,onlyBc,onlyBank,from:dates[0],to:dates[dates.length-1]};
+  });
+}
+function bcReviewHtml(f){
+  const data=f.bcHistory, inc=!!f.bcIncludeOnly, p=bcPlan(data,inc), done=fileImported(f);
+  const rows=[...p.groups.entries()].map(([name,g])=>{
+    const nNew=p.creates.filter(t=>t.account===name).length, nMatch=p.matches.filter(x=>x.t.account===name).length, nOnly=p.onlyBc.filter(t=>t.account===name).length;
+    const isNew=String(g.main.id).startsWith('nueva:');
+    return `<tr><td>${esc(name)}</td><td>${isNew?`<span class="chip info">Cuenta nueva · ${esc(ACC_KINDS[g.main.kind])}</span>`:esc(g.accounts.map(a=>a.name).join(', '))}</td>
+      <td class="nowrap">${g.start?`${fmtDate(g.start)} – ${fmtDate(g.end)}`:'<span class="faint">—</span>'}</td>
+      <td class="num">${NF_INT.format(nMatch)}</td><td class="num">${NF_INT.format(nNew)}</td><td class="num">${nOnly?NF_INT.format(nOnly):''}</td></tr>`; }).join('');
+  return `<section class="view-sec"><div class="panel">
+    <div class="rv-grid">
+      <div><div class="k">Archivo</div><b>Historial de Bluecoins</b></div>
+      <div><div class="k">Periodo</div>${fmtDate(p.from)} – ${fmtDate(p.to)}</div>
+      <div><div class="k">Movimientos</div>${NF_INT.format(p.txCount)}${p.already?` · ${NF_INT.format(p.already)} ya estaban`:''}</div>
+      <div><div class="k">Coinciden con el banco</div><b>${NF_INT.format(p.matches.length)}</b></div>
+      <div><div class="k">Se añaden como histórico</div><b>${NF_INT.format(p.creates.length)}</b></div>
+    </div>
+    <ul class="warns info-list">
+      ${p.newAccounts.length?`<li>${icon('wallet','ic xs')}Cuentas nuevas: ${p.newAccounts.map(a=>esc(a.name)+(a.archived?' (archivada)':'')).join(', ')}.</li>`:''}
+      ${p.openings.length?`<li>${icon('wallet','ic xs')}Saldo de apertura desde Bluecoins: ${p.openings.map(o=>esc(o.name)+' '+money(o.cents)).join(', ')}.</li>`:''}
+      ${p.newCats.length?`<li>${icon('tag','ic xs')}Categorías nuevas: ${p.newCats.map(c=>esc(c.parent+' › '+c.name)).join(', ')}.</li>`:''}
+      ${p.onlyBc.length?`<li>${icon('alert','ic xs')}${NF_INT.format(p.onlyBc.length)} movimientos de Bluecoins caen en fechas que ya cubren los archivos del banco y no coinciden con ninguno.</li>`:''}
+      ${p.onlyBank?`<li>${icon('alert','ic xs')}${NF_INT.format(p.onlyBank)} movimientos del banco no están en Bluecoins: quedarán pendientes de exportar.</li>`:''}
+    </ul>
+    <div class="set-row">
+      ${done&&!p.matches.length&&!p.creates.length?'':`<button class="btn" data-act="bc-confirm">${icon('check')}Importar el historial</button>`}
+      ${p.onlyBc.length?`<label class="chk"><input type="checkbox" id="bcOnly"${inc?' checked':''}>Añadir también los ${NF_INT.format(p.onlyBc.length)} que solo están en Bluecoins</label>`:''}
+      ${done?'<span class="chip ok">Este archivo ya se importó</span>':''}
+    </div></div></section>
+    <section class="view-sec"><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Cuenta en Bluecoins</th><th>En la app</th><th>Cubierto por el banco</th><th class="num">Coinciden</th><th class="num">Histórico</th><th class="num">Solo en Bluecoins</th></tr></thead><tbody>${rows}</tbody></table></div></section>
+    ${p.onlyBc.length?`<section class="view-sec"><div class="sec-head"><h2>Solo en Bluecoins</h2></div><div class="tbl-wrap tall"><table class="tbl"><thead><tr><th>Fecha</th><th>Cuenta</th><th>Beneficiario</th><th>Categoría</th><th class="num">Importe</th><th>Notas</th></tr></thead><tbody>
+      ${p.onlyBc.slice(0,300).map(t=>`<tr><td class="nowrap">${fmtDate(t.date)}</td><td>${esc(t.account)}</td><td class="ellip">${esc(t.payee)}</td><td class="ellip">${esc(t.type==='t'?'Transferencia'+(t.pairAccount?' · '+t.pairAccount:''):[t.parent,t.category].filter(Boolean).join(' › '))}</td><td class="num">${amtHtml(t.amountCents,t.type==='t'?'transferencia':'')}</td><td class="ellip">${esc(t.notes)}</td></tr>`).join('')}
+      </tbody></table></div></section>`:''}`;
+}
+async function confirmBcImport(fi){
+  const f=imp.files[fi], data=f&&f.bcHistory; if(!data) return;
+  const p=bcPlan(data,!!f.bcIncludeOnly), importId=uid(), now=nowISO();
+  const ok=await commit('',cs=>{
+    const snaps=new Map();
+    const snap=(store,key)=>{ const k=store+'\u0000'+key; if(!snaps.has(k)) snaps.set(k,{store,key,before:clone(S[store].get(key))??null}); };
+    const put=(store,rec)=>{ snap(store,keyOf(store,rec)); return cs.put(store,rec); };
+    /* Cuentas nuevas y saldos de apertura */
+    const accId=new Map();
+    for(const a of p.newAccounts){ const n=normAccount({...a,id:uid(),order:100+S.accounts.size,createdAt:now}); put('accounts',n); accId.set(a.id,n.id); }
+    for(const o of p.openings){ const a=S.accounts.get(o.id); if(a) put('accounts',{...clone(a),openingCents:o.cents,openingDate:o.date,inStats:o.inStats}); }
+    const realId=a=>accId.get(a.id)||a.id;
+    /* Categorías nuevas */
+    const catId=(kind,parent,name)=>{
+      if(!parent||!name) return null;
+      let pc=[...S.categories.values()].find(c=>!c.parent&&c.kind===kind&&c.name.trim()===parent.trim());
+      if(!pc) pc=put('categories',{id:uid(),parent:null,name:parent,kind});
+      let ch=[...S.categories.values()].find(c=>c.parent===pc.id&&c.name.trim()===name.trim());
+      if(!ch) ch=put('categories',{id:uid(),parent:pc.id,name,kind});
+      return ch.id;
+    };
+    const kindOf=t=>t.type==='t'?'transferencia':t.type==='i'?'ingreso':'gasto';
+    const catKind=t=>t.type==='i'?'ingreso':'gasto';
+    const res=new Map(); // id de Bluecoins → id del movimiento en la app
+    /* Coincidencias: el movimiento del banco se completa con lo apuntado en Bluecoins */
+    for(const {t,m,parts} of p.matches){
+      const cur=S.movements.get(m.id); if(!cur) continue;
+      const n=clone(cur);
+      if(!cur.reviewed&&!cur.transferPairId){
+        n.kind=kindOf(t);
+        if(n.kind!=='transferencia'){ n.categoryId=catId(catKind(t),t.parent,t.category)||cur.categoryId; n.transferAccountId=null; }
+        else{ n.categoryId=null; const g=p.groups.get(t.pairAccount); if(g&&!n.transferAccountId) n.transferAccountId=realId(g.main); }
+      }
+      if(t.payee) n.payee=t.payee.slice(0,120);
+      const notes=parts?[t.notes,'Dividido en Bluecoins: '+parts.map(x=>[x.parent,x.category].filter(Boolean).join(' › ')+' '+money(x.amountCents)).join(' + ')].filter(Boolean).join(' · '):t.notes;
+      if(notes&&!normText(cur.notes).includes(normText(notes))) n.notes=[cur.notes,notes].filter(Boolean).join(' · ').slice(0,2000);
+      n.labels=mergeLabels(cur.labels,...(parts||[t]).map(x=>x.labels));
+      n.bcRef=(parts||[t]).map(x=>'bc:'+x.id).join(','); n.reviewed=true; if(!n.exportId) n.exportId='bluecoins';
+      put('movements',n); for(const x of parts||[t]) res.set(x.id,n.id);
+    }
+    /* Histórico: lo que no está en los archivos del banco */
+    for(const t of p.creates){
+      const g=p.groups.get(t.account); if(!g) continue;
+      const k=kindOf(t), aid=realId(g.main), hist=g.bank;
+      const m=normMovement({id:uid(),accountId:aid,date:t.date,valueDate:'',amountCents:t.amountCents,rawConcept:t.payee,concept:'',payee:t.payee,
+        categoryId:k==='transferencia'?null:catId(catKind(t),t.parent,t.category),notes:t.notes,labels:t.labels,bankBalanceCents:null,pending:false,kind:k,
+        transferPairId:null,transferAccountId:k==='transferencia'&&p.groups.get(t.pairAccount)?realId(p.groups.get(t.pairAccount).main):null,
+        source:'bluecoins',importId,fingerprint:'',occurrence:1,bcRef:'bc:'+t.id,historic:hist,exportId:'bluecoins',reviewed:true,createdAt:now,
+        detail:t.splitId?'Parte de un movimiento dividido en Bluecoins':''});
+      put('movements',m); res.set(t.id,m.id);
+    }
+    /* Parejas de transferencias de Bluecoins */
+    const seen=new Set();
+    for(const t of data.transactions){
+      if(t.type!=='t'||!t.pairId||seen.has(t.id)) continue;
+      seen.add(t.id); seen.add(t.pairId);
+      const a=res.get(t.id), b=res.get(t.pairId); if(!a||!b) continue;
+      const ma=S.movements.get(a), mb=S.movements.get(b); if(!ma||!mb||ma.transferPairId||mb.transferPairId||ma.accountId===mb.accountId) continue;
+      const pid=uid();
+      put('movements',{...clone(ma),kind:'transferencia',categoryId:null,transferPairId:pid,transferAccountId:mb.accountId});
+      put('movements',{...clone(mb),kind:'transferencia',categoryId:null,transferPairId:pid,transferAccountId:ma.accountId});
+    }
+    /* Etiquetas de Bluecoins en el catálogo */
+    const lbl=mergeLabels(getMeta('labels')||[],data.transactions.flatMap(t=>t.labels));
+    if(JSON.stringify(lbl)!==JSON.stringify(getMeta('labels')||[])) put('meta',{key:'labels',value:lbl});
+    const createdIds=[...snaps.values()].filter(x=>x.before===null).map(x=>({store:x.store,key:x.key}));
+    const changed=[...snaps.values()].filter(x=>x.before!==null).map(x=>({store:x.store,key:x.key,before:x.before}));
+    cs.put('imports',{id:importId,kind:'bluecoins',at:now,fileName:f.name,fileHash:f.hash,importer:'bluecoins',bank:'bluecoins',accountId:null,from:p.from,to:p.to,
+      rows:p.txCount,added:p.creates.length,duplicates:p.already,matched:p.matches.length,created:createdIds,changed,movementIds:[]});
+    return `Historial importado: ${NF_INT.format(p.creates.length)} movimientos añadidos y ${NF_INT.format(p.matches.length)} completados con Bluecoins`;
+  });
+  if(ok){ f.bcIncludeOnly=false; renderImport(); }
+}
+
 /* ================= Vista: Importar ================= */
 const imp={files:[],sel:0,sheet:0,busy:false,needsPerm:false,raw:false};
 const fileImported=f=>[...S.imports.values()].some(r=>r.fileHash===f.hash);
@@ -1922,11 +2118,11 @@ function renderImport(){
       <div class="file-list">${imp.files.map((x,i)=>{
         const im=x.analysis&&importerOf(x.analysis.importerId), done=fileImported(x);
         return `<div class="file-item" data-file="${i}"${i===imp.sel?' aria-current="true"':''}>${icon(x.error?'alert':done?'check-circle':'file','ic')}
-          <div class="grow"><div class="nm">${esc(x.name)}</div><div class="meta">${esc(x.formatLabel)}${x.encoding?' · '+esc(x.encoding):''} · ${fmtSize(x.size)}${x.analysis?` · ${NF_INT.format(x.analysis.rows.length)} movimientos · ${fmtDate(x.analysis.from)} – ${fmtDate(x.analysis.to)}`:''}</div></div>
+          <div class="grow"><div class="nm">${esc(x.name)}</div><div class="meta">${esc(x.formatLabel)}${x.encoding?' · '+esc(x.encoding):''} · ${fmtSize(x.size)}${x.bcHistory?` · ${NF_INT.format(x.bcHistory.transactions.length)} movimientos`:''}${x.analysis?` · ${NF_INT.format(x.analysis.rows.length)} movimientos · ${fmtDate(x.analysis.from)} – ${fmtDate(x.analysis.to)}`:''}</div></div>
           ${done?'<span class="chip ok">Importado</span>':''}
-          ${x.error?`<span class="chip bad" title="${esc(x.error)}">No se puede leer</span>`:im?`<span class="chip info">${esc(im.label)}${x.analysis.ident?' '+esc(maskId(x.analysis.ident)):''}</span>`:'<span class="chip warn">Formato no reconocido</span>'}
+          ${x.error?`<span class="chip bad" title="${esc(x.error)}">No se puede leer</span>`:x.bcHistory?'<span class="chip info">Bluecoins</span>':im?`<span class="chip info">${esc(im.label)}${x.analysis.ident?' '+esc(maskId(x.analysis.ident)):''}</span>`:'<span class="chip warn">Formato no reconocido</span>'}
           <button class="btn ghost icon" data-act="drop-file" data-i="${i}" aria-label="Quitar de la lista">${icon('x')}</button></div>`; }).join('')}</div></section>
-      ${f?(f.analysis&&!imp.raw?reviewHtml(imp.sel):previewHtml(f)):''}`:''}
+      ${f?(f.bcHistory?bcReviewHtml(f):f.analysis&&!imp.raw?reviewHtml(imp.sel):previewHtml(f)):''}`:''}
     ${S.imports.size?importHistoryHtml():''}`;
   bindDrop($('dropZone'));
 }
@@ -2094,6 +2290,15 @@ async function confirmImport(fi){
 }
 async function undoImport(id){
   const im=S.imports.get(id); if(!im) return;
+  if(im.kind==='bluecoins'){
+    if(!await askConfirm('Deshacer importación',`<p>Se quitará el historial de Bluecoins (${NF_INT.format((im.created||[]).filter(x=>x.store==='movements').length)} movimientos) y los movimientos del banco que se completaron con él volverán a como estaban.</p>`,'Deshacer importación',true)) return;
+    commit('Importación del historial deshecha',cs=>{
+      for(const x of im.created||[]) cs.del(x.store,x.key);
+      for(const x of im.changed||[]){ const n=NORM[x.store](x.before); if(n) cs.put(x.store,n); }
+      cs.del('imports',id);
+    });
+    return;
+  }
   const ids=im.movementIds||[], exp=ids.filter(x=>S.movements.get(x)?.exportId).length;
   if(!await askConfirm('Deshacer importación',`<p>Se quitarán los ${NF_INT.format(ids.length)} movimientos que añadió «${esc(im.fileName)}»${(im.pairChanges||[]).length?' y las transferencias que emparejó volverán a como estaban':''}.${exp?` <b>${exp} ya se exportaron a Bluecoins</b>: tendrás que borrarlos también allí.`:''}</p>`,'Deshacer importación',true)) return;
   commit('Importación deshecha',cs=>{
@@ -2116,7 +2321,7 @@ async function undoImport(id){
 function importHistoryHtml(){
   const list=[...S.imports.values()].sort((a,b)=>(b.at||'').localeCompare(a.at||''));
   return `<section class="view-sec"><div class="sec-head"><h2>Historial de importaciones</h2></div><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Fecha</th><th>Archivo</th><th>Cuenta</th><th>Periodo</th><th class="num">Nuevos</th><th class="num">Ya estaban</th><th></th></tr></thead><tbody>
-    ${list.map(i=>`<tr><td class="nowrap">${fmtDT(i.at)}</td><td class="ellip">${esc(i.fileName)}</td><td>${esc(accName(i.accountId))}</td><td class="nowrap">${fmtDate(i.from)} – ${fmtDate(i.to)}</td><td class="num">${NF_INT.format(i.added||0)}</td><td class="num">${NF_INT.format(i.duplicates||0)}</td>
+    ${list.map(i=>`<tr><td class="nowrap">${fmtDT(i.at)}</td><td class="ellip">${esc(i.fileName)}</td><td>${i.kind==='bluecoins'?'Bluecoins (todas)':esc(accName(i.accountId))}</td><td class="nowrap">${fmtDate(i.from)} – ${fmtDate(i.to)}</td><td class="num">${NF_INT.format(i.added||0)}</td><td class="num">${NF_INT.format(i.duplicates||0)}</td>
       <td><button class="btn ghost sm" data-act="undo-import" data-id="${i.id}">${icon('undo')}Deshacer importación</button></td></tr>`).join('')}
     </tbody></table></div></section>`;
 }
@@ -2128,7 +2333,7 @@ async function readFiles(files,{onlyNew=false,quiet=false}={}){
     for(const file of files){
       const r=await readSpreadsheet(file);
       if(imp.files.some(x=>x.hash===r.hash)){ skipped++; continue; }
-      try{ r.analysis=r.error?null:analyzeFile(r); }catch(e){ console.error(e); r.analysis=null; }
+      try{ r.analysis=r.error||r.bcHistory?null:analyzeFile(r); }catch(e){ console.error(e); r.analysis=null; }
       if(onlyNew&&[...S.imports.values()].some(x=>x.fileHash===r.hash)){ skipped++; continue; }
       imp.files.push(r); added++;
     }
@@ -2254,7 +2459,7 @@ function openAccDialog(id,prefill=null,onCreated=null){
   $('accKind').innerHTML=Object.entries(ACC_KINDS).map(([k,t])=>`<option value="${k}"${a&&a.kind===k?' selected':''}>${t}</option>`).join('');
   $('accName').value=a?a.name:''; $('accOpening').value=a?centsToComma(a.openingCents):''; $('accOpeningDate').value=a?a.openingDate:'';
   $('accHints').value=a?a.matchHints.join(', '):''; $('accBcName').value=a?a.bluecoins.name:''; $('accBcType').value=a?a.bluecoins.type:'Banco';
-  $('accArchived').checked=a?a.archived:false; $('accDelete').hidden=!a; $('accOpening').classList.remove('bad');
+  $('accArchived').checked=a?a.archived:false; $('accInStats').checked=a?a.inStats:true; $('accDelete').hidden=!a; $('accOpening').classList.remove('bad');
   $('accLinked').innerHTML='<option value="">Ninguna</option>'+accSorted(true).filter(x=>!x.kind.startsWith('tarjeta')&&x.id!==id).map(x=>`<option value="${x.id}"${a&&a.linkedAccountId===x.id?' selected':''}>${esc(x.name)}</option>`).join('');
   if(prefill){
     for(const [k,v] of Object.entries(prefill)) if($(k)&&v!=null){ if($(k).type==='checkbox') $(k).checked=!!v; else $(k).value=v; }
@@ -2274,7 +2479,7 @@ $('accForm').addEventListener('submit',e=>{
   const dupName=accSorted(true).some(a=>a.id!==accEditing&&a.name.toLowerCase()===name.toLowerCase());
   if(dupName){ showToast('Ya hay una cuenta con ese nombre',{error:true}); return; }
   const data={name,bank:$('accBank').value,kind:$('accKind').value,openingCents:opening,openingDate:od,matchHints:$('accHints').value.split(',').map(x=>x.trim()).filter(Boolean).slice(0,10),
-    bluecoins:{name:$('accBcName').value.trim(),type:$('accBcType').value.trim()},archived:$('accArchived').checked,
+    bluecoins:{name:$('accBcName').value.trim(),type:$('accBcType').value.trim()},archived:$('accArchived').checked,inStats:$('accInStats').checked,
     linkedAccountId:$('accKind').value.startsWith('tarjeta')?($('accLinked').value||null):null,autoLabels:normLabels(accTags)};
   const id=accEditing, newId=uid(), cb=accCreatedCb; accCreatedCb=null; closeDlg($('accDlg'));
   commit(id?'Cuenta guardada':'Cuenta añadida',cs=>{
@@ -2498,6 +2703,13 @@ function renderHelp(){
   <tr><td><b>Trade Republic</b></td><td>Archivo «Exportación de transacción» (.csv). Trae todo el historial y un identificador de cada movimiento, pero no el saldo. Los intereses se apuntan netos (bruto menos retención).</td></tr></table>
   <p>Las transferencias entre tus cuentas se reconocen solas cuando el archivo trae el IBAN de la otra cuenta (Trade Republic) o cuando el mismo importe aparece en las dos cuentas con pocos días de diferencia. Para lo primero, pon los últimos 4 dígitos del IBAN de cada cuenta en <span class="path">Cuentas → (la cuenta) → Identificadores en los archivos del banco</span>.</p>
 
+  <h2>Historial de Bluecoins</h2>
+  <p>El archivo de historial de Bluecoins se importa igual que los del banco, en <span class="path">Importar</span>. La app lo cruza con lo que ya has importado del banco:</p>
+  <ul><li><b>Coinciden</b> (misma cuenta, mismo importe y fechas cercanas): el movimiento del banco toma la categoría, el beneficiario, las notas y las etiquetas de Bluecoins, y queda marcado como «Ya está en Bluecoins». Las compras divididas en Bluecoins se reconocen por la suma.</li>
+  <li><b>Fuera de las fechas de los archivos del banco:</b> se añaden como <b>histórico</b>. Cuentan en el resumen y en las estadísticas; en las cuentas con archivos del banco no cuentan en el saldo, porque el saldo lo da el banco.</li>
+  <li><b>Solo en Bluecoins</b> (en fechas que ya cubre el banco): se listan aparte y solo se añaden si marcas la casilla.</li>
+  <li>Las cuentas que no existen se crean con su saldo de Bluecoins. Las hipotecas no cuentan en ingresos y gastos (se puede cambiar en la cuenta).</li></ul>
+
   <h2>Tarjetas de BBVA</h2>
   <p>BBVA cobra las compras de la tarjeta una vez al mes («Adeudo mensual de tarjeta» en la cuenta y «Recibo mes anterior» en la tarjeta). Por eso cada tarjeta es una cuenta propia, de tipo <b>Tarjeta de crédito</b>, con <b>Se carga en la cuenta: BBVA</b>: las compras son los gastos reales y el cargo mensual es una transferencia de BBVA a la tarjeta, que no cuenta como gasto.</p>
   <p>Si en Bluecoins apuntas las compras de la tarjeta en la cuenta BBVA, pon <b>BBVA</b> en <b>Nombre en Bluecoins</b> de cada tarjeta: así se exportan a esa cuenta y el cargo mensual no se exporta.</p>
@@ -2579,6 +2791,7 @@ document.addEventListener('click',async e=>{
           id=>{ const rv=imp.files[imp.sel]?.review; if(rv){ rv.accountId=id; rv.edits.clear(); rv.setOpening=null; rv.addHint=null; } renderImport(); });
         return; }
       case 'undo-import': undoImport(act.dataset.id); return;
+      case 'bc-confirm': confirmBcImport(imp.sel); return;
       case 'new-rule': openRuleDialog(null); return;
       case 'rule-up': e.stopPropagation(); moveRule(act.dataset.id,-1); return;
       case 'rule-down': e.stopPropagation(); moveRule(act.dataset.id,1); return;
@@ -2630,6 +2843,7 @@ document.addEventListener('input',e=>{
 document.addEventListener('change',e=>{
   const t=e.target;
   if(t.id==='showArch'){ ui.showArchived=t.checked; saveUI(); renderAccounts(); return; }
+  if(t.id==='bcOnly'){ const f=imp.files[imp.sel]; if(f){ f.bcIncludeOnly=t.checked; renderImport(); } return; }
   const rv=imp.files[imp.sel]?.review;
   if(rv){
     if(t.id==='rvAcc'){ rv.accountId=t.value; rv.edits.clear(); rv.setOpening=null; rv.addHint=null; rv.page=0; renderImport(); return; }
@@ -2681,7 +2895,7 @@ window.__fin={S,ui,parseAmount,centsToPlain,centsToComma,parseDateCell,excelSeri
   normText,fingerprint,normMovement,normAccount,normCategory,parseCatLines,balancesAt,balanceAt,flowsBetween,causesFor,
   bluecoinsCsv,movementsToBluecoinsRows,BC_HEADER,commit,undo,backupData,go,ready:()=>!!db,
   readBiff,readCfbStream,rkValue,IMPORTERS,analyzeFile,chainCheck,findHeader,hdrNorm,guessAccount,classifyRow,buildReview,confirmImport,undoImport,
-  ruleMatches,matchRule,applyRulesToFree,findCounterpart,suggestRuleText,normRule,imp,splitLabels,normLabels,mergeLabels,allLabels};
+  ruleMatches,matchRule,applyRulesToFree,bcPlan,confirmBcImport,catLabel,findCounterpart,suggestRuleText,normRule,imp,splitLabels,normLabels,mergeLabels,allLabels};
 </script>
 </body>
 </html>

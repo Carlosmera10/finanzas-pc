@@ -205,3 +205,34 @@ def trade_republic():
 
 trade_republic()
 print("Trade Republic generado")
+
+
+def historial_bluecoins():
+    """Historial de Bluecoins en el formato que importa la app (datos inventados, encajan con los archivos de banco de arriba)."""
+    import json
+    t = lambda i, d, ty, c, acc, payee="", parent="", cat="", notes="", labels=(), pair="", pairacc="", split="": {
+        "id": str(i), "date": d, "type": ty, "amountCents": c, "account": acc, "payee": payee, "parent": parent, "category": cat,
+        "notes": notes, "labels": list(labels), "pairId": pair, "pairAccount": pairacc, "splitId": split}
+    datos = {"app": "finanzas-pc", "kind": "bluecoins-historial", "version": 1, "generatedAt": "2026-10-29T23:00:00+00:00", "source": "sintético",
+             "accounts": [{"name": "BBVA", "type": "Banco", "hidden": False}, {"name": "Billetera", "type": "Efectivo", "hidden": False},
+                          {"name": "Hipoteca ficticia", "type": "Hipotecas", "hidden": False}],
+             "categories": [{"kind": "gasto", "parent": "Comida", "name": "Súper"}, {"kind": "gasto", "parent": "Salud", "name": "Colegio"},
+                            {"kind": "gasto", "parent": "Compras", "name": "Ropa"}, {"kind": "ingreso", "parent": "Otros", "name": "Otros"}],
+             "transactions": [
+                 t(1, "2024-01-01", "o", 5000000, "Hipoteca ficticia", "Hipoteca ficticia"),
+                 t(2, "2024-02-01", "i", 10000, "Hipoteca ficticia", "Ajuste", "Otros", "Otros"),
+                 t(3, "2024-05-01", "t", -200000, "BBVA", "Retirada", pair="4", pairacc="Billetera"),
+                 t(4, "2024-05-01", "t", 200000, "Billetera", "Retirada", pair="3", pairacc="BBVA"),
+                 t(5, "2024-05-02", "e", -50000, "Billetera", "Mercado", "Comida", "Súper"),
+                 t(6, "2025-01-01", "o", 100000, "BBVA", "BBVA"),
+                 t(7, "2025-06-10", "e", -2500, "BBVA", "Mercado viejo", "Comida", "Súper"),
+                 t(8, "2026-09-10", "e", -555, "BBVA", "Solo en Bluecoins", "Comida", "Súper"),
+                 t(9, "2026-09-26", "e", -1000, "BBVA", "Mercadona", "Comida", "Súper", split="S1"),
+                 t(10, "2026-09-26", "e", -240, "BBVA", "Mercadona", "Compras", "Ropa", split="S1"),
+                 t(11, "2026-09-30", "e", -10000, "BBVA", "Colegio", "Salud", "Colegio", "Cuota", ["Cole 🎒"]),
+             ]}
+    json.dump(datos, open(os.path.join(DIR, "bluecoins-historial.json"), "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+
+
+historial_bluecoins()
+print("Historial de Bluecoins generado")

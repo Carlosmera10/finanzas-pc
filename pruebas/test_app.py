@@ -440,6 +440,38 @@ def flujo_importacion(browser):
     p.wait_for_selector("text=Importación deshecha")
     vuelta = p.evaluate("""() => { const m = [...window.__fin.S.movements.values()].find(m => m.amountCents === -100000); return [m.kind, m.transferPairId]; }""")
     ok(vuelta == ["gasto", None], "al deshacer, la transferencia de BBVA vuelve a ser como antes")
+    # Historial de Bluecoins: se cruza con lo importado del banco
+    saldo_bbva = p.evaluate("() => { const F = window.__fin, a = [...F.S.accounts.values()].find(x => x.name === 'BBVA'); return F.balanceAt(a.id, '2026-12-31'); }")
+    importar(p, "bluecoins-historial.json")
+    txt = p.inner_text("#view")
+    ok("Coinciden con el banco\n2" in txt and "Se añaden como histórico\n5" in txt, "historial: 2 coinciden y 5 se añaden")
+    ok("Billetera" in txt and "Hipoteca ficticia" in txt, "propone las cuentas nuevas")
+    ok("1 movimientos de Bluecoins caen en fechas" in txt, "avisa del que solo está en Bluecoins")
+    p.click("[data-act=bc-confirm]")
+    p.wait_for_selector("text=Historial importado")
+    h = p.evaluate("""() => { const F = window.__fin, S = F.S, ms = [...S.movements.values()], acc = n => [...S.accounts.values()].find(a => a.name === n);
+      const col = ms.find(m => m.rawConcept.startsWith('Adeudo colegio') && m.bcRef);
+      const div = ms.find(m => m.rawConcept === 'Mercadona c. ma');
+      const tr = ms.filter(m => m.source === 'bluecoins' && m.kind === 'transferencia');
+      return {bbva: F.balanceAt(acc('BBVA').id, '2026-12-31'), billetera: F.balanceAt(acc('Billetera').id, '2026-12-31'),
+        hipoteca: [F.balanceAt(acc('Hipoteca ficticia').id, '2026-12-31'), acc('Hipoteca ficticia').inStats],
+        colegio: col && [col.payee, F.catLabel(col.categoryId), col.labels.includes('Cole 🎒'), col.exportId],
+        dividido: div && [div.bcRef.split(',').length, div.notes.includes('Dividido en Bluecoins')],
+        pareja: tr.length === 2 && tr[0].transferPairId && tr[0].transferPairId === tr[1].transferPairId,
+        flujos: [F.flowsBetween('2024-01-01', '2024-12-31'), F.flowsBetween('2025-01-01', '2025-12-31')].map(f => [f.inc, f.exp]),
+        historicos: ms.filter(m => m.historic).length}; }""")
+    ok(h["bbva"] == saldo_bbva, "el saldo de BBVA (con banco) no cambia")
+    ok(h["billetera"] == 150000, "Billetera: saldo como en Bluecoins")
+    ok(h["hipoteca"] == [5010000, False], "la hipoteca no cuenta en ingresos y gastos")
+    ok(h["colegio"] == ["Colegio", "Salud › Colegio", True, "bluecoins"], f"el movimiento del banco se completa con Bluecoins {h['colegio']}")
+    ok(h["dividido"] == [2, True], "la compra dividida en Bluecoins se reconoce por la suma")
+    ok(h["pareja"], "las dos partes de una transferencia de Bluecoins quedan emparejadas")
+    ok(h["flujos"] == [[0, 50000], [0, 2500]], f"estadísticas con el histórico {h['flujos']}")
+    ok(h["historicos"] == 2, "lo de BBVA anterior al banco queda como histórico (no cuenta en el saldo)")
+    p.click("tr:has-text('bluecoins-historial') [data-act=undo-import]")
+    p.click("#cfmOk")
+    p.wait_for_selector("text=Importación del historial deshecha")
+    ok(p.evaluate("() => [...window.__fin.S.movements.values()].filter(m => m.bcRef || m.source === 'bluecoins').length + [...window.__fin.S.accounts.values()].filter(a => a.name === 'Billetera').length") == 0, "deshacer el historial lo quita todo")
     sin_desborde(p, "PC importar")
     ok(not errores, "sin errores en la consola (importación): " + "; ".join(errores[:3]))
     ctx.close()

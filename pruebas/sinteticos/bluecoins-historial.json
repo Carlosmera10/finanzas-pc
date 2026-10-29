@@ -1,0 +1,215 @@
+{
+ "app": "finanzas-pc",
+ "kind": "bluecoins-historial",
+ "version": 1,
+ "generatedAt": "2026-10-29T23:00:00+00:00",
+ "source": "sintético",
+ "accounts": [
+  {
+   "name": "BBVA",
+   "type": "Banco",
+   "hidden": false
+  },
+  {
+   "name": "Billetera",
+   "type": "Efectivo",
+   "hidden": false
+  },
+  {
+   "name": "Hipoteca ficticia",
+   "type": "Hipotecas",
+   "hidden": false
+  }
+ ],
+ "categories": [
+  {
+   "kind": "gasto",
+   "parent": "Comida",
+   "name": "Súper"
+  },
+  {
+   "kind": "gasto",
+   "parent": "Salud",
+   "name": "Colegio"
+  },
+  {
+   "kind": "gasto",
+   "parent": "Compras",
+   "name": "Ropa"
+  },
+  {
+   "kind": "ingreso",
+   "parent": "Otros",
+   "name": "Otros"
+  }
+ ],
+ "transactions": [
+  {
+   "id": "1",
+   "date": "2024-01-01",
+   "type": "o",
+   "amountCents": 5000000,
+   "account": "Hipoteca ficticia",
+   "payee": "Hipoteca ficticia",
+   "parent": "",
+   "category": "",
+   "notes": "",
+   "labels": [],
+   "pairId": "",
+   "pairAccount": "",
+   "splitId": ""
+  },
+  {
+   "id": "2",
+   "date": "2024-02-01",
+   "type": "i",
+   "amountCents": 10000,
+   "account": "Hipoteca ficticia",
+   "payee": "Ajuste",
+   "parent": "Otros",
+   "category": "Otros",
+   "notes": "",
+   "labels": [],
+   "pairId": "",
+   "pairAccount": "",
+   "splitId": ""
+  },
+  {
+   "id": "3",
+   "date": "2024-05-01",
+   "type": "t",
+   "amountCents": -200000,
+   "account": "BBVA",
+   "payee": "Retirada",
+   "parent": "",
+   "category": "",
+   "notes": "",
+   "labels": [],
+   "pairId": "4",
+   "pairAccount": "Billetera",
+   "splitId": ""
+  },
+  {
+   "id": "4",
+   "date": "2024-05-01",
+   "type": "t",
+   "amountCents": 200000,
+   "account": "Billetera",
+   "payee": "Retirada",
+   "parent": "",
+   "category": "",
+   "notes": "",
+   "labels": [],
+   "pairId": "3",
+   "pairAccount": "BBVA",
+   "splitId": ""
+  },
+  {
+   "id": "5",
+   "date": "2024-05-02",
+   "type": "e",
+   "amountCents": -50000,
+   "account": "Billetera",
+   "payee": "Mercado",
+   "parent": "Comida",
+   "category": "Súper",
+   "notes": "",
+   "labels": [],
+   "pairId": "",
+   "pairAccount": "",
+   "splitId": ""
+  },
+  {
+   "id": "6",
+   "date": "2025-01-01",
+   "type": "o",
+   "amountCents": 100000,
+   "account": "BBVA",
+   "payee": "BBVA",
+   "parent": "",
+   "category": "",
+   "notes": "",
+   "labels": [],
+   "pairId": "",
+   "pairAccount": "",
+   "splitId": ""
+  },
+  {
+   "id": "7",
+   "date": "2025-06-10",
+   "type": "e",
+   "amountCents": -2500,
+   "account": "BBVA",
+   "payee": "Mercado viejo",
+   "parent": "Comida",
+   "category": "Súper",
+   "notes": "",
+   "labels": [],
+   "pairId": "",
+   "pairAccount": "",
+   "splitId": ""
+  },
+  {
+   "id": "8",
+   "date": "2026-09-10",
+   "type": "e",
+   "amountCents": -555,
+   "account": "BBVA",
+   "payee": "Solo en Bluecoins",
+   "parent": "Comida",
+   "category": "Súper",
+   "notes": "",
+   "labels": [],
+   "pairId": "",
+   "pairAccount": "",
+   "splitId": ""
+  },
+  {
+   "id": "9",
+   "date": "2026-09-26",
+   "type": "e",
+   "amountCents": -1000,
+   "account": "BBVA",
+   "payee": "Mercadona",
+   "parent": "Comida",
+   "category": "Súper",
+   "notes": "",
+   "labels": [],
+   "pairId": "",
+   "pairAccount": "",
+   "splitId": "S1"
+  },
+  {
+   "id": "10",
+   "date": "2026-09-26",
+   "type": "e",
+   "amountCents": -240,
+   "account": "BBVA",
+   "payee": "Mercadona",
+   "parent": "Compras",
+   "category": "Ropa",
+   "notes": "",
+   "labels": [],
+   "pairId": "",
+   "pairAccount": "",
+   "splitId": "S1"
+  },
+  {
+   "id": "11",
+   "date": "2026-09-30",
+   "type": "e",
+   "amountCents": -10000,
+   "account": "BBVA",
+   "payee": "Colegio",
+   "parent": "Salud",
+   "category": "Colegio",
+   "notes": "Cuota",
+   "labels": [
+    "Cole 🎒"
+   ],
+   "pairId": "",
+   "pairAccount": "",
+   "splitId": ""
+  }
+ ]
+}
