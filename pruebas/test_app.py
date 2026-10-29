@@ -300,7 +300,7 @@ def flujo_pc(browser):
     p.reload()
     ok(p.evaluate("() => document.documentElement.dataset.theme") == "dark", "el tema se aplica al abrir (sin parpadeo)")
 
-    for v in ["resumen", "movimientos", "importar", "controles", "cuentas", "categorias", "reglas", "ajustes", "instrucciones"]:
+    for v in ["resumen", "estadisticas", "balance", "presupuestos", "movimientos", "importar", "controles", "cuentas", "categorias", "reglas", "ajustes", "instrucciones"]:
         p.click(f".nav-btn[data-view={v}]")
         sin_desborde(p, "PC " + v)
     ok(not errores, "sin errores en la consola (PC): " + "; ".join(errores[:3]))
@@ -483,12 +483,12 @@ def flujo_estrecho(browser, estado):
     print("Ventana estrecha")
     # Cargar los mismos datos para ver las vistas llenas
     p.evaluate("""(d) => window.__fin.commit('', cs => { for (const s of Object.keys(d.stores)) for (const r of d.stores[s]) cs.put(s, r); }, {noUndo:true})""", estado)
-    for v in ["resumen", "movimientos", "importar", "controles", "cuentas", "categorias", "reglas", "ajustes", "instrucciones"]:
+    for v in ["resumen", "estadisticas", "balance", "presupuestos", "movimientos", "importar", "controles", "cuentas", "categorias", "reglas", "ajustes", "instrucciones"]:
         p.click("#menuBtn")
         p.click(f".nav-btn[data-view={v}]")
         p.wait_for_timeout(250)
         sin_desborde(p, "Estrecha " + v)
-        if v in ("resumen", "movimientos", "controles"):
+        if v in ("resumen", "estadisticas", "balance", "presupuestos", "movimientos", "controles"):
             p.screenshot(path=os.path.join(CAPT, f"movil-{v}.png"), full_page=True)
     p.keyboard.press("n")
     p.wait_for_selector("#movDlg[open]")
@@ -498,12 +498,179 @@ def flujo_estrecho(browser, estado):
     ok(not errores, "sin errores en la consola (estrecha): " + "; ".join(errores[:3]))
     ctx.close()
 
+# Datos inventados para las estadísticas: 24 meses completos y lo que va del mes actual.
+# Cuenta A (corriente) con apertura hace 6 meses (lo anterior es histórico), Cuenta B (ahorro)
+# e Hipoteca (no cuenta en ingresos y gastos).
+SEMILLA_STATS_JS = r"""
+() => {
+  const F = window.__fin, today = F.ymd(new Date()), ym0 = today.slice(0, 7);
+  const ymAdd = (ym, n) => { const d = new Date(+ym.slice(0, 4), +ym.slice(5, 7) - 1 + n, 1); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); };
+  const open = ymAdd(ym0, -6) + '-01';
+  const acc = [
+    {id: 'A', name: 'Cuenta A', kind: 'corriente', openingCents: 500000, openingDate: open, order: 1},
+    {id: 'B', name: 'Ahorro B', kind: 'ahorro', openingCents: 100000, openingDate: ymAdd(ym0, -24) + '-01', order: 2},
+    {id: 'H', name: 'Hipoteca', kind: 'prestamo', openingCents: -9000000, openingDate: ymAdd(ym0, -24) + '-01', inStats: false, order: 3},
+  ].map(F.normAccount);
+  const cat = [
+    {id: 'casa', name: 'Casa'}, {id: 'alq', name: 'Alquiler', parent: 'casa'}, {id: 'luz', name: 'Luz', parent: 'casa'},
+    {id: 'comida', name: 'Comida'}, {id: 'super', name: 'Supermercado', parent: 'comida'},
+    {id: 'ocio', name: 'Ocio'}, {id: 'cine', name: 'Cine', parent: 'ocio'},
+    {id: 'ing', name: 'Ingresos', kind: 'ingreso'}, {id: 'nom', name: 'Nómina', parent: 'ing', kind: 'ingreso'},
+  ].map(F.normCategory);
+  const movs = []; let n = 0;
+  const add = (accountId, date, amountCents, kind, categoryId, payee, extra = {}) => {
+    if (date > today) return;
+    movs.push(F.normMovement(Object.assign({id: 'm' + (++n), accountId, date, amountCents, kind, categoryId, payee, concept: payee,
+      historic: accountId === 'A' && date < open, source: accountId === 'A' && date < open ? 'bluecoins' : 'manual', reviewed: true}, extra)));
+  };
+  for (let k = -24; k <= 0; k++) {
+    const ym = ymAdd(ym0, k);
+    add('A', ym + '-01', 200000, 'ingreso', 'nom', 'Empresa');
+    add('A', ym + '-03', -70000, 'gasto', 'alq', 'Casero');
+    add('A', ym + '-10', -30000, 'gasto', 'super', 'Super X');
+    add('A', ym + '-15', k === -1 ? -40000 : -10000, 'gasto', 'cine', 'Cines', k === -1 ? {labels: ['Viaje']} : {});
+    add('A', ym + '-18', k === -1 ? -8000 : -5000, 'gasto', 'luz', 'Eléctrica');
+    add('A', ym + '-20', -50000, 'transferencia', null, 'A ahorro', {transferAccountId: 'B'});
+    add('B', ym + '-20', 50000, 'transferencia', null, 'Desde A', {transferAccountId: 'A'});
+    add('H', ym + '-05', 30000, 'ingreso', 'nom', 'Ajuste');
+  }
+  return F.commit('', cs => { for (const a of acc) cs.put('accounts', a); for (const c of cat) cs.put('categories', c); for (const m of movs) cs.put('movements', m); }, {noUndo: true}).then(() => ({n: movs.length, open}));
+}
+"""
+
+
+def flujo_estadisticas(browser):
+    errores = []
+    ctx, p = nueva_pagina(browser, 1440, 900, errores)
+    print("Estadísticas, balance y presupuestos")
+    sem = p.evaluate(SEMILLA_STATS_JS)
+    ok(sem["n"] > 150, f"datos de prueba cargados ({sem['n']} movimientos)")
+    F = "window.__fin"
+    # Motor: el mes anterior completo, con las cuentas predeterminadas (sin la hipoteca)
+    r = p.evaluate(f"""() => {{ const F={F}, [f,t]=F.periodRange('mesant'), d=F.scopeIds('stats',null);
+      const T=F.totals(F.flows(d).filter(x=>x.d>=f&&x.d<=t));
+      return [[...d].sort(), T.inc, T.exp, T.save]; }}""")
+    ok(r[0] == ["A", "B"], "por defecto no se suma la hipoteca en ingresos y gastos")
+    ok(r[1:] == [200000, 148000, 52000], f"mes anterior: ingresos 2.000, gastos 1.480, ahorro 520 → {r[1:]}")
+    # Saldo hacia atrás antes de la apertura (con el histórico)
+    r = p.evaluate(f"""() => {{ const F={F}, a=F.S.accounts.get('A'), d=F.addDays(a.openingDate,-1);
+      return [F.balanceHist(a,d), F.balanceHist(a,F.addDays(a.openingDate,-40))]; }}""")
+    ok(r[0] == 500000, "el día antes de la apertura el saldo es el de apertura")
+    ok(r[1] != 500000, f"antes se reconstruye con el histórico ({r[1]})")
+    # Avisos
+    ins = p.evaluate(f"() => {F}.insightsFor({F}.scopeIds('stats',null)).map(x=>x.text)")
+    ok(any("Ocio" in t and "más que su media" in t for t in ins), "aviso: Ocio se disparó el mes pasado")
+    ok(any("Eléctrica ha subido" in t for t in ins), "aviso: recibo que sube")
+
+    # Estadísticas en pantalla
+    p.click(".nav-btn[data-view=estadisticas]")
+    p.select_option("[data-st=period]", "mesant")
+    p.wait_for_timeout(200)
+    txt = p.inner_text("#view").replace("\xa0", " ")
+    ok("1.480,00 €" in txt and "2.000,00 €" in txt, "las cifras del periodo aparecen en pantalla")
+    ok(p.locator(".viz svg").count() >= 6, f"gráficos dibujados ({p.locator('.viz svg').count()})")
+    # Tooltip al pasar por un gráfico
+    p.hover(".vcard:has-text('Ingresos y gastos por mes') rect.hit >> nth=0")
+    ok(p.is_visible("#vizTip") and "Ingresos" in p.inner_text("#vizTip"), "tooltip al pasar el ratón")
+    # Ver como tabla
+    p.click(".vcard:has-text('Ingresos y gastos por mes') details.vtable summary")
+    ok(p.locator(".vcard:has-text('Ingresos y gastos por mes') details.vtable tbody tr").count() >= 1, "vista de tabla del gráfico")
+    # Desglose de una categoría
+    p.click("tr[data-st-cat=ocio]")
+    ok(p.locator("tr.subrow").count() == 1 and p.locator(".vcard:has-text('Últimos 24 meses')").count() == 1, "pulsar una categoría abre sus subcategorías y su evolución")
+    p.screenshot(path=os.path.join(CAPT, "pc-estadisticas.png"), full_page=True)
+
+    # Cuentas de un elemento: solo «Ahorro B» en el resumen del periodo
+    p.click(".vcard:has-text('Resumen del periodo') .scope-chip")
+    p.wait_for_selector("#scopeDlg[open]")
+    p.uncheck("#scopeInheritChk")
+    p.click("[data-scope-all='0']")
+    p.check("input[data-scope-acc=B]")
+    p.fill("#scopeSetName", "Solo ahorro")
+    p.click("#scopeSaveSet")
+    p.click("#scopeForm button[type=submit]")
+    p.wait_for_timeout(200)
+    kpi = p.inner_text(".vcard:has-text('Resumen del periodo')").replace("\xa0", " ")
+    ok("Solo ahorro" in kpi and "0,00 €" in kpi, "el elemento usa sus propias cuentas (conjunto «Solo ahorro»)")
+    ok("Traspasos con otras cuentas" in kpi, "muestra los traspasos con cuentas fuera de la selección")
+    otro = p.inner_text(".vcard:has-text('Ingresos y gastos por mes') .scope-chip")
+    ok("Solo ahorro" not in otro, "los demás elementos siguen con las cuentas de la página")
+    # Cuentas de la página: incluir la hipoteca
+    p.click("#topActions .scope-chip")
+    p.wait_for_selector("#scopeDlg[open]")
+    ok(p.is_hidden("#scopeInherit"), "en la página no aparece «Las mismas que la página»")
+    p.click("[data-scope-all='1']")
+    p.click("#scopeForm button[type=submit]")
+    p.wait_for_timeout(200)
+    r = p.evaluate(f"() => [...{F}.scopeIds('stats','stats.evol')].sort()")
+    ok(r == ["A", "B", "H"], "la página puede sumar también la hipoteca")
+    # Volver a lo predeterminado
+    p.click("#topActions .scope-chip")
+    p.click("#scopeReset")
+    p.wait_for_timeout(150)
+    ok(p.evaluate(f"() => [...{F}.scopeIds('stats','stats.evol')].sort()") == ["A", "B"], "«Volver a lo predeterminado»")
+
+    # Balance
+    p.click(".nav-btn[data-view=balance]")
+    p.wait_for_selector(".vcard:has-text('Evolución del patrimonio') svg")
+    ok("aproximado" in p.inner_text("#view"), "avisa de que el saldo anterior a la apertura es aproximado")
+    p.click("[data-bal-mode=cuentas]")
+    ok(p.locator(".vcard:has-text('Evolución del patrimonio') .legend .lg").count() == 3, "evolución por cuenta con leyenda")
+    p.screenshot(path=os.path.join(CAPT, "pc-balance.png"), full_page=True)
+
+    # Presupuestos: proponer, editar y deshacer
+    p.click(".nav-btn[data-view=presupuestos]")
+    p.click("#topActions [data-act=bud-propose]")
+    p.wait_for_selector("#propDlg[open]")
+    ok(p.locator("#propBody input[data-prop]").count() == 3, "propone las tres categorías de gasto")
+    p.select_option("#propMethod", "med")
+    ok("Ahorro previsto" in p.inner_text("#propCalc"), "calcula el ahorro previsto")
+    p.click("#propForm button[type=submit]")
+    p.wait_for_selector("text=3 presupuestos creados")
+    ok(p.evaluate(f"() => {F}.budgets().map(b=>b.amountCents).sort((a,b)=>a-b)") == [10000, 30000, 75000], "presupuestos con la mediana redondeada a 5 €")
+    p.click("[data-act=bud-edit] >> nth=0")
+    p.wait_for_selector("#budDlg[open]")
+    ok(p.locator("#budHelp .bud-opt").count() == 7, "el diálogo ofrece las medidas del histórico")
+    p.fill("#budAmount", "50")
+    p.click("#budForm button[type=submit]")
+    p.wait_for_timeout(200)
+    p.screenshot(path=os.path.join(CAPT, "pc-presupuestos.png"), full_page=True)
+    p.click("body")
+    p.keyboard.press("Control+z")
+    p.wait_for_timeout(200)
+    ok(p.evaluate(f"() => {F}.budgets().map(b=>b.amountCents).sort((a,b)=>a-b)") == [10000, 30000, 75000], "Ctrl+Z deshace el cambio de presupuesto")
+    p.keyboard.press("Control+z")
+    p.wait_for_timeout(200)
+    ok(p.evaluate(f"() => {F}.budgets().length") == 0, "y la creación de los presupuestos")
+
+    # Resumen
+    p.keyboard.press("Alt+1")
+    ok(p.locator(".vcard").count() >= 6 and p.locator(".hb").count() >= 3, "resumen con patrimonio, mes, año, gráfico, categorías y avisos")
+    p.screenshot(path=os.path.join(CAPT, "pc-resumen.png"), full_page=True)
+    p.keyboard.press("Alt+2")
+    ok(p.evaluate("() => window.__fin.ui.view") == "estadisticas", "Alt+2 lleva a Estadísticas")
+    for v in ["resumen", "estadisticas", "balance", "presupuestos"]:
+        p.click(f".nav-btn[data-view={v}]")
+        sin_desborde(p, "PC " + v)
+    # Oscuro
+    p.evaluate("() => { document.documentElement.dataset.theme='dark'; }")
+    for v in ["resumen", "estadisticas", "balance"]:
+        p.click(f".nav-btn[data-view={v}]")
+        p.wait_for_timeout(150)
+        p.screenshot(path=os.path.join(CAPT, f"pc-{v}-oscuro.png"), full_page=True)
+    ok(not errores, "sin errores en la consola (estadísticas): " + "; ".join(errores[:3]))
+    estado = p.evaluate("() => window.__fin.backupData()")
+    ctx.close()
+    return estado
+
 
 with sync_playwright() as pw:
     b = pw.chromium.launch()
     flujo_importacion(b)
     est = flujo_pc(b)
+    est2 = flujo_estadisticas(b)
     flujo_estrecho(b, est)
+    flujo_estrecho(b, est2)
     b.close()
 
 print()

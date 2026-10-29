@@ -28,6 +28,12 @@ App de escritorio (PWA para Chrome) que complementa a **Bluecoins** en Android: 
 - **Historial de Bluecoins:** importa un archivo con todo lo apuntado en Bluecoins y lo cruza con lo importado del banco (completa los movimientos que coinciden, añade el resto como histórico y lista lo que solo está en Bluecoins). Con «Deshacer importación».
 - **Reglas** de categorización (contiene / empieza por / expresión regular), con «Crear regla» desde un movimiento.
 - **Etiquetas** con espacios y emojis (como en Bluecoins), con sugerencias de las existentes: en la importación (por fila o para todos los nuevos), automáticas por cuenta, en bloque, filtro por etiqueta y gestión (crear, renombrar, eliminar).
+- **Resumen:** patrimonio, mes y año con variaciones, ingresos y gastos de 12 meses, gasto del mes por categoría frente a su media, presupuesto del mes y avisos.
+- **Estadísticas:** periodos (mes, 3/6/12 meses, año, todo, personalizado), ingresos y gastos por mes, ahorro y tasa de ahorro, composición por categoría con subcategorías y variaciones, evolución por categoría, mapa de calor, beneficiarios, etiquetas, días de la semana, gastos más grandes y avisos.
+- **Balance:** evolución del patrimonio (total o por cuenta), activos y deudas, variación de cada cuenta.
+- **Presupuestos:** mensuales por categoría o subcategoría, con propuesta calculada del histórico (media, mediana, percentil 75), previsión a fin de mes y estado.
+- **Qué cuentas se suman:** cada página y cada gráfico o tabla puede usar su propia selección de cuentas, con conjuntos guardados.
+- Gráficos SVG propios (sin librerías), con información al pasar el ratón y vista de tabla.
 - **Controles de saldo:** comparan el saldo real del banco (y el de Bluecoins) con el de la app y proponen posibles causas si no cuadra.
 - **Copias de seguridad:** exportar y restaurar un archivo con todos los datos, con recordatorio.
 - Modo claro y oscuro, «Deshacer» en todos los cambios (también con Ctrl+Z) y atajos de teclado.
