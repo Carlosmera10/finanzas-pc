@@ -150,6 +150,8 @@ async () => {
   eq([a.importerId, a.rows.length, a.ident.slice(-4), a.rows.filter(x => x.cardReceipt).length], ['bbva_tarjeta', 5, '1111', 1], 'BBVA tarjeta: lectura, tarjeta y recibo');
   a = await an('ing-cuenta.xls');
   eq([a.importerId, a.rows.length, a.ident.slice(-4), a.chain.breaks.length, a.rows[0].bankCategory], ['ing_cuenta', 4, '9999', 0, 'Ventajas ING › Otras Ventajas ING'], 'ING: lectura, cuenta y categoría del banco');
+  a = await an('trade-republic.csv');
+  eq([a.importerId, a.rows.length, a.rows[2].amountCents, a.rows[1].counterIban.slice(-4), !!a.rows[0].bankRef], ['tr_cuenta', 4, 810, '9999', true], 'Trade Republic: lectura, neto e IBAN');
   a = await an('sintetico-xlsx.xlsx');
   eq(a, null, 'un archivo de otro formato no se confunde con un banco');
   return out;
@@ -374,6 +376,27 @@ def flujo_importacion(browser):
     par = p.evaluate("""() => { const ms = [...window.__fin.S.movements.values()].filter(m => Math.abs(m.amountCents) === 100000);
       return ms.length === 2 && ms.every(m => m.kind === 'transferencia') && ms[0].transferPairId === ms[1].transferPairId; }""")
     ok(par, "transferencia BBVA → ING emparejada")
+    # Trade Republic: CSV sin saldo; intereses netos; transferencia reconocida por el IBAN
+    importar(p, "trade-republic.csv")
+    p.click("[data-act=rv-new-acc]")
+    ok(p.input_value("#accBank") == "tr", "la cuenta nueva es de Trade Republic")
+    p.click("#accForm button[type=submit]")
+    p.wait_for_selector("text=4 nuevos")
+    ok(p.is_checked("#rvOpening") and "0,00" in p.inner_text(".rv-opts"), "propone saldo de apertura 0 (el archivo trae todo el historial)")
+    p.click("[data-act=rv-confirm]")
+    p.wait_for_selector("text=4 movimientos importados en Trade Republic")
+    tr = p.evaluate("""() => { const F = window.__fin, S = F.S, a = [...S.accounts.values()].find(x => x.bank === 'tr');
+      const ms = [...S.movements.values()].filter(m => m.accountId === a.id).sort((x, y) => x.date.localeCompare(y.date));
+      const ing = [...S.accounts.values()].find(x => x.bank === 'ing');
+      return {importes: ms.map(m => m.amountCents), fechas: ms.map(m => m.date), saldo: F.balanceAt(a.id, '2026-12-31'),
+        transf: ms.filter(m => m.kind === 'transferencia').map(m => m.transferAccountId === ing.id)}; }""")
+    ok(tr["importes"] == [200000, -30000, 810, 972], f"intereses netos de retención {tr['importes']}")
+    ok(tr["fechas"][-1] == "2026-10-01", "la hora UTC se pasa a la fecha de Madrid")
+    ok(tr["saldo"] == 200000 - 30000 + 810 + 972, "saldo de Trade Republic")
+    ok(tr["transf"] == [True], "el IBAN de ING convierte el movimiento en transferencia a ING")
+    p.evaluate("() => { window.__fin.imp.files = []; }")
+    importar(p, "trade-republic.csv")
+    ok("0 nuevos" in p.inner_text("#view"), "Trade Republic: reimportar no duplica (identificador único)")
     # Volver a importar lo mismo no duplica nada
     n = p.evaluate("() => window.__fin.S.movements.size")
     p.evaluate("() => { window.__fin.imp.files = []; }")
@@ -412,7 +435,7 @@ def flujo_importacion(browser):
     ok(True, "regla creada y aplicada")
     # Deshacer la importación de ING: la transferencia de BBVA vuelve a como estaba
     p.click(".nav-btn[data-view=importar]")
-    p.click("[data-act=undo-import] >> nth=0")
+    p.click("tr:has-text('ing-cuenta.xls') [data-act=undo-import]")
     p.click("#cfmOk")
     p.wait_for_selector("text=Importación deshecha")
     vuelta = p.evaluate("""() => { const m = [...window.__fin.S.movements.values()].find(m => m.amountCents === -100000); return [m.kind, m.transferPairId]; }""")

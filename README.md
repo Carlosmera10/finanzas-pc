@@ -21,7 +21,7 @@ App de escritorio (PWA para Chrome) que complementa a **Bluecoins** en Android: 
 - **Categorías:** las mismas de Bluecoins (principal y subcategoría); se pueden pegar en lista.
 - **Movimientos:** tabla con filtros, búsqueda (también por importe), selección múltiple, alta manual de gastos, ingresos y transferencias, y exportación del filtro a CSV para Excel.
 - **Importar:** lee los archivos de la carpeta elegida o los que se arrastren: `.xlsx`, `.xls` de Excel 97-2003 (binario, con lector propio), `.xls` que en realidad son HTML o XML de Excel 2003, y `.csv`.
-  - Importadores de **BBVA (cuenta y tarjetas)** e **ING (cuenta)**, reconocidos por el contenido del archivo.
+  - Importadores de **BBVA (cuenta y tarjetas)**, **ING (cuenta)** y **Trade Republic** (CSV), reconocidos por el contenido del archivo.
   - Revisión antes de confirmar: cuenta propuesta, nuevos frente a los que ya estaban (descargas que se solapan), saldo encadenado, saldo de apertura y avisos.
   - Transferencias entre cuentas propias y liquidaciones de tarjeta emparejadas automáticamente.
   - Control de saldo automático al importar y «Deshacer importación».

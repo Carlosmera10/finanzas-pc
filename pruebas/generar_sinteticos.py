@@ -182,3 +182,26 @@ def ing_xls():
 bbva_tarjeta()
 ing_xls()
 print("Archivos de bancos generados")
+
+
+def trade_republic():
+    """CSV «Exportación de transacción» de Trade Republic (todo el historial, sin saldo, con identificador único)."""
+    cab = ["datetime", "date", "account_type", "category", "type", "asset_class", "name", "symbol", "shares", "price", "amount", "fee", "tax",
+           "currency", "original_amount", "original_currency", "fx_rate", "description", "transaction_id", "counterparty_name",
+           "counterparty_iban", "payment_reference", "mcc_code"]
+    filas = [
+        ("2026-08-12T06:44:00.472562Z", "2026-08-12", "TRANSFER_INBOUND", "2000.000000", "", "Incoming transfer from TITULAR FICTICIO", "00000000-0000-0000-0000-000000000001", ""),
+        ("2026-08-20T10:00:00.000000Z", "2026-08-20", "TRANSFER_INSTANT_OUTBOUND", "-300.000000", "", "Outgoing transfer for TITULAR FICTICIO (ES0000000000000000009999)", "00000000-0000-0000-0000-000000000002", "ES0000000000000000009999"),
+        ("2026-09-01T04:55:08.856705Z", "2026-09-01", "INTEREST_PAYMENT", "10.000000", "-1.90", "Interest payment for payout collection 0000-0001", "00000000-0000-0000-0000-000000000003", ""),
+        ("2026-09-30T22:30:00.000000Z", "2026-09-30", "INTEREST_PAYMENT", "12.000000", "-2.28", "Interest payment for payout collection 0000-0002", "00000000-0000-0000-0000-000000000004", ""),
+    ]
+    import csv
+    with open(os.path.join(DIR, "trade-republic.csv"), "w", encoding="utf-8", newline="") as fh:
+        w = csv.writer(fh, quoting=csv.QUOTE_ALL, lineterminator="\n")
+        w.writerow(cab)
+        for dtm, d, tipo, imp, tax, desc, tid, iban in filas:
+            w.writerow([dtm, d, "DEFAULT", "CASH", tipo, "", "", "", "", "", imp, "", tax, "EUR", "", "", "", desc, tid, "", iban, "", ""])
+
+
+trade_republic()
+print("Trade Republic generado")

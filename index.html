@@ -615,7 +615,8 @@ function sumCents(list,get=x=>x){ let t=0; for(const x of list) t+=get(x); retur
 
 /* ================= Textos ================= */
 const normText=s=>String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toUpperCase().replace(/\s+/g,' ').trim();
-function fingerprint(m){ return [m.accountId,m.date,m.amountCents,normText(m.rawConcept||m.concept)].join('|')+(isInt(m.bankBalanceCents)?'|'+m.bankBalanceCents:''); }
+/* Si el banco da un identificador único del movimiento (Trade Republic), la huella es ese identificador */
+function fingerprint(m){ if(m.bankRef) return m.accountId+'|ref|'+m.bankRef; return [m.accountId,m.date,m.amountCents,normText(m.rawConcept||m.concept)].join('|')+(isInt(m.bankBalanceCents)?'|'+m.bankBalanceCents:''); }
 
 /* ================= Etiquetas =================
    Pueden llevar espacios y emojis (como en Bluecoins): se separan con comas, nunca con espacios. */
@@ -1027,7 +1028,7 @@ function normMovement(m){
     notes:str(m.notes,2000),labels:normLabels(m.labels),bankBalanceCents:isInt(m.bankBalanceCents)?m.bankBalanceCents:null,
     pending:!!m.pending,kind,transferPairId:m.transferPairId?str(m.transferPairId,64):null,transferAccountId:m.transferAccountId?str(m.transferAccountId,64):null,
     source:['import','manual','bluecoins'].includes(m.source)?m.source:'manual',importId:m.importId?str(m.importId,64):null,
-    detail:str(m.detail,500),bankCategory:str(m.bankCategory,160),
+    detail:str(m.detail,500),bankCategory:str(m.bankCategory,160),bankRef:str(m.bankRef,80),
     fingerprint:str(m.fingerprint,800),occurrence:isInt(m.occurrence)&&m.occurrence>0?m.occurrence:1,
     exportId:m.exportId?str(m.exportId,64):null,changedAfterExport:!!m.changedAfterExport,reviewed:!!m.reviewed,
     createdAt:str(m.createdAt,40)||nowISO(),updatedAt:str(m.updatedAt,40)};
@@ -1774,6 +1775,23 @@ const IMPORTERS=[
       return {date,valueDate:date,amountCents:amt,rawConcept:joinConcept(cellStr(r[c.descripcion]),c.comentario!=null?cellStr(r[c.comentario]):''),detail:'',
         bankCategory:[cat,sub].filter(Boolean).join(' › '),bankBalanceCents:cellAmount(r[c.saldo]),currency:'EUR'};
     }},
+  /* Trade Republic: «Exportación de transacción» (.csv con todo el historial). Sin saldo por fila, pero con un identificador
+     único por movimiento. En los intereses, «amount» es el bruto y «tax» la retención: se apunta el neto. */
+  {id:'tr_cuenta',bank:'tr',card:false,fullHistory:true,label:'Trade Republic · cuenta',
+    req:{date:['DATE'],type:['TYPE'],amount:['AMOUNT'],description:['DESCRIPTION'],id:['TRANSACTION_ID']},
+    opt:{datetime:['DATETIME'],fee:['FEE'],tax:['TAX'],currency:['CURRENCY'],iban:['COUNTERPARTY_IBAN'],cpname:['COUNTERPARTY_NAME'],category:['CATEGORY'],asset:['ASSET_CLASS'],name:['NAME']},
+    row(r,c){
+      const v=k=>c[k]!=null?cellStr(r[c[k]]):'';
+      const amt=parseAmount(v('amount'),{decimal:'.'}); if(amt==null) return null;
+      const fee=parseAmount(v('fee'),{decimal:'.'})||0, tax=parseAmount(v('tax'),{decimal:'.'})||0;
+      const dtv=v('datetime'), d=dtv&&!isNaN(Date.parse(dtv))?ymd(new Date(dtv)):parseDateCell(v('date'));
+      if(!d) return null;
+      const type=v('type'), desc=v('description');
+      const iban=(v('iban')||(/\((ES\d{22})\)/.exec(desc)||[])[1]||'').replace(/\s/g,'');
+      const extra=[type,fee||tax?`importe ${money(amt)}${tax?' · impuestos '+money(tax):''}${fee?' · comisión '+money(fee):''}`:'',v('asset')?'activo: '+v('name'):''].filter(Boolean).join(' · ');
+      return {date:d,valueDate:parseDateCell(v('date'))||'',amountCents:amt+fee+tax,rawConcept:desc,detail:extra,bankBalanceCents:null,currency:v('currency'),
+        bankRef:v('id'),counterIban:iban,trInvest:!!v('asset')};
+    }},
 ];
 const importerOf=id=>IMPORTERS.find(x=>x.id===id);
 /* Saldo encadenado: comprueba saldo anterior + importe = saldo, en el orden del archivo (descendente o ascendente) */
@@ -1796,6 +1814,8 @@ function analyzeFile(f){
       if(!out.length) continue;
       let ident=im.ident?im.ident(rows,h):'';
       if(!ident){ const ids=[...new Set(out.map(x=>x.ident).filter(Boolean))]; if(ids.length===1) ident=ids[0]; else if(ids.length>1) warnings.push('El archivo mezcla varias tarjetas: '+ids.map(maskId).join(', ')); }
+      const inv=out.filter(x=>x.trInvest).length;
+      if(inv) warnings.push(`${inv} movimientos son operaciones de inversión: se importan solo como movimientos de efectivo.`);
       const cur=[...new Set(out.map(x=>x.currency).filter(c=>c&&!/^(EUR|€)$/i.test(c)))];
       if(cur.length) warnings.push('Hay importes en otra moneda: '+cur.join(', '));
       const dates=out.map(x=>x.date).sort();
@@ -1809,7 +1829,7 @@ function analyzeFile(f){
 const accCompatible=(a,im)=>a.bank===im.bank&&im.card===a.kind.startsWith('tarjeta');
 function hintMatch(a,ident){ const d=digits(ident); return !!d&&a.matchHints.some(h=>{ const hd=digits(h); return hd.length>=4&&d.endsWith(hd); }); }
 function fpCounts(accountId){ return cached('fp|'+accountId,()=>{ const m=new Map(); for(const x of S.movements.values()) if(x.accountId===accountId&&x.fingerprint) m.set(x.fingerprint,(m.get(x.fingerprint)||0)+1); return m; }); }
-const rowFp=(accountId,r)=>fingerprint({accountId,date:r.date,amountCents:r.amountCents,rawConcept:r.rawConcept,bankBalanceCents:r.bankBalanceCents});
+const rowFp=(accountId,r)=>fingerprint({accountId,date:r.date,amountCents:r.amountCents,rawConcept:r.rawConcept,bankBalanceCents:r.bankBalanceCents,bankRef:r.bankRef});
 function guessAccount(an){
   const im=importerOf(an.importerId), accs=accSorted(true);
   if(an.ident){ const m=accs.filter(a=>hintMatch(a,an.ident)); if(m.length===1) return m[0].id; }
@@ -1847,8 +1867,17 @@ function findCounterpart(x,forced=false,claimed=null){
   const c=(movsByAmount().get(-x.amountCents)||[]).filter(o=>o.accountId!==x.accountId&&!o.transferPairId&&!(claimed&&claimed.has(o.id))&&Math.abs(daysBetween(o.date,x.date))<=3
     &&(!o.transferAccountId||o.transferAccountId===x.accountId)&&(!x.transferAccountId||x.transferAccountId===o.accountId)
     &&(forced||o.kind==='transferencia'||TRANSFER_RX.test(hay)||TRANSFER_RX.test(ruleHay(o))));
-  return c.length===1?c[0]:null;
+  if(c.length<=1) return c[0]||null;
+  /* Varios candidatos: gana el de fecha más cercana y el que nombra al otro banco en el concepto («Transferencia mensual ing», «Trade republic») */
+  const xa=S.accounts.get(x.accountId);
+  const score=o=>{ const oa=S.accounts.get(o.accountId); let sc=Math.abs(daysBetween(o.date,x.date))*10;
+    if(xa&&BANK_WORDS[xa.bank]&&BANK_WORDS[xa.bank].test(ruleHay(o))) sc-=50;
+    if(oa&&BANK_WORDS[oa.bank]&&BANK_WORDS[oa.bank].test(hay)) sc-=50;
+    return sc; };
+  const sorted=c.map(o=>[score(o),o]).sort((a,b)=>a[0]-b[0]);
+  return sorted[0][0]<sorted[1][0]?sorted[0][1]:null;
 }
+const BANK_WORDS={bbva:/\bBBVA\b/,ing:/\bING\b/,tr:/TRADE ?REPUBLIC|\bTR\b/};
 function classifyRow(r,accountId,claimed=null){
   const m={kind:r.amountCents<0?'gasto':'ingreso',categoryId:null,payee:'',labels:[],transferAccountId:null,ruleId:null,note:'',pairWith:null,settlement:false};
   const auto=S.accounts.get(accountId)?.autoLabels||[];
@@ -1866,7 +1895,10 @@ function classifyRow(r,accountId,claimed=null){
     return m;
   }
   m.labels=[...auto];
-  const rule=matchRule({...r,accountId}); if(rule) applyRuleSet(m,rule);
+  /* El IBAN de la otra parte es de una cuenta propia (sus últimos dígitos están en «Identificadores»): es una transferencia */
+  const own=r.counterIban?accSorted(true).find(a=>a.id!==accountId&&hintMatch(a,r.counterIban)):null;
+  if(own) Object.assign(m,{kind:'transferencia',transferAccountId:own.id,note:'Transferencia con '+own.name});
+  const rule=own?null:matchRule({...r,accountId}); if(rule) applyRuleSet(m,rule);
   const c=findCounterpart({accountId,date:r.date,amountCents:r.amountCents,hay:ruleHay(r),transferAccountId:m.kind==='transferencia'?m.transferAccountId:null},m.kind==='transferencia',claimed);
   if(c){ claimed&&claimed.add(c.id); Object.assign(m,{kind:'transferencia',categoryId:null,transferAccountId:c.accountId,pairWith:c.id,note:'Se empareja con un movimiento de '+accName(c.accountId)}); }
   return m;
@@ -1944,6 +1976,9 @@ function buildReview(fi){
     }
     if(an.chain&&(!acc.openingDate||an.chain.openingDate<acc.openingDate)){
       rv.openingOffer={cents:an.chain.opening,date:an.chain.openingDate};
+      if(rv.setOpening===null) rv.setOpening=true;
+    } else if(importerOf(an.importerId).fullHistory&&!acc.openingDate&&!own.length){
+      rv.openingOffer={cents:0,date:an.from};
       if(rv.setOpening===null) rv.setOpening=true;
     } else if(acc.openingDate&&an.from<acc.openingDate) w.push(`Hay movimientos anteriores a la fecha de apertura de la cuenta (${fmtDate(acc.openingDate)}): no contarán en el saldo.`);
     if(an.ident&&!hintMatch(acc,an.ident)&&last4(an.ident)){ rv.hintOffer=last4(an.ident); if(rv.addHint===null) rv.addHint=true; }
@@ -2024,7 +2059,7 @@ async function confirmImport(fi){
       const m={id:uid(),accountId:acc.id,date:r.date,valueDate:r.valueDate||'',amountCents:r.amountCents,rawConcept:r.rawConcept,concept:'',payee:(c.payee||'').trim().slice(0,120),
         categoryId:isT?null:(c.categoryId||null),notes:'',labels:normLabels(c.labels),bankBalanceCents:isInt(r.bankBalanceCents)?r.bankBalanceCents:null,pending:false,kind:c.kind,
         transferPairId:null,transferAccountId:isT?(c.transferAccountId||null):null,source:'import',importId,fingerprint:x.fp,occurrence:x.occ,
-        detail:r.detail||'',bankCategory:r.bankCategory||'',exportId:null,changedAfterExport:false,reviewed:false,createdAt:now};
+        detail:r.detail||'',bankCategory:r.bankCategory||'',bankRef:r.bankRef||'',exportId:null,changedAfterExport:false,reviewed:false,createdAt:now};
       if(c.ruleId) hits.set(c.ruleId,(hits.get(c.ruleId)||0)+1);
       if(isT&&m.transferAccountId){
         const o=findCounterpart({accountId:acc.id,date:m.date,amountCents:m.amountCents,hay:ruleHay(m),transferAccountId:m.transferAccountId},true);
@@ -2459,7 +2494,9 @@ function renderHelp(){
   <li>Si algo no está bien: <span class="path">Importar → Historial de importaciones → Deshacer importación</span> quita exactamente lo que añadió ese archivo.</li></ol>
   <table><tr><td><b>BBVA · cuenta</b></td><td>Archivo «Últimos movimientos» (.xlsx). Trae el saldo de cada movimiento.</td></tr>
   <tr><td><b>BBVA · tarjeta</b></td><td>Archivo «Listado de movimientos» (.xlsx) de cada tarjeta. Trae también el «Recibo mes anterior».</td></tr>
-  <tr><td><b>ING · cuenta</b></td><td>Archivo «movements-ddmmaaaa.xls». Trae el saldo y la categoría que pone ING.</td></tr></table>
+  <tr><td><b>ING · cuenta</b></td><td>Archivo «movements-ddmmaaaa.xls». Trae el saldo y la categoría que pone ING.</td></tr>
+  <tr><td><b>Trade Republic</b></td><td>Archivo «Exportación de transacción» (.csv). Trae todo el historial y un identificador de cada movimiento, pero no el saldo. Los intereses se apuntan netos (bruto menos retención).</td></tr></table>
+  <p>Las transferencias entre tus cuentas se reconocen solas cuando el archivo trae el IBAN de la otra cuenta (Trade Republic) o cuando el mismo importe aparece en las dos cuentas con pocos días de diferencia. Para lo primero, pon los últimos 4 dígitos del IBAN de cada cuenta en <span class="path">Cuentas → (la cuenta) → Identificadores en los archivos del banco</span>.</p>
 
   <h2>Tarjetas de BBVA</h2>
   <p>BBVA cobra las compras de la tarjeta una vez al mes («Adeudo mensual de tarjeta» en la cuenta y «Recibo mes anterior» en la tarjeta). Por eso cada tarjeta es una cuenta propia, de tipo <b>Tarjeta de crédito</b>, con <b>Se carga en la cuenta: BBVA</b>: las compras son los gastos reales y el cargo mensual es una transferencia de BBVA a la tarjeta, que no cuenta como gasto.</p>
