@@ -1,0 +1,15 @@
+# Datos reales: nunca se suben al repositorio
+privado/
+*.xls
+*.xlsx
+*.csv
+*.json
+!app.webmanifest
+# Los archivos sintéticos de prueba sí se suben
+!pruebas/sinteticos/
+!pruebas/sinteticos/**
+
+# Restos de pruebas
+pruebas/capturas/
+__pycache__/
+node_modules/
