@@ -80,6 +80,7 @@ UNIT_JS = r'''
   eq(F.parseCsv('a;"b ""c""";d\r\n1;2;3\r\n', ';'), [['a', 'b "c"', 'd'], ['1', '2', '3']], 'comillas en CSV');
   // Textos y categorías
   eq(F.normText('  Cafetería   Plaza '), 'CAFETERIA PLAZA', 'normaliza concepto');
+  eq(F.splitLabels('Tarjeta Carlos💳🧔, Almuñécar 🌴; almuñécar 🌴'), ['Tarjeta Carlos💳🧔', 'Almuñécar 🌴'], 'etiquetas con espacios, emojis y sin repetir');
   eq(F.parseCatLines('Comida > Súper\nCasa;Luz\n\nOcio'), [{parent:'Comida',child:'Súper'},{parent:'Casa',child:'Luz'},{parent:'Ocio',child:null}], 'líneas de categorías');
   // CSV de Bluecoins
   eq(F.bluecoinsCsv([{type:'e',date:'01/09/2026',payee:'Café, bar',amount:'-1.80',parent:'Comida',category:'Cafés',accountType:'Bank',account:'Prueba',notes:'',labels:'',status:'',split:''}]),
@@ -205,9 +206,12 @@ def flujo_pc(browser):
     p.fill("#movAmount", "45,67")
     p.select_option("#movCat", label="Supermercado")
     p.fill("#movConcept", "Compra semanal")
-    p.fill("#movLabels", "casa, semanal")
+    p.click(".tags[data-tags=mov] .tag-in")
+    p.keyboard.type("casa"); p.keyboard.press("Enter")
+    p.keyboard.type("fin de semana 🏖"); p.keyboard.press("Enter")
     p.click("#movForm button[type=submit]")
     p.wait_for_selector("text=Movimiento añadido")
+    ok(p.evaluate("() => [...window.__fin.S.movements.values()][0].labels") == ["casa", "fin de semana 🏖"], "etiquetas con espacios y emojis")
 
     # Transferencia manual
     p.click(".nav-btn[data-view=movimientos]")
@@ -336,10 +340,23 @@ def flujo_importacion(browser):
     importar(p, "bbva-tarjeta.xlsx")
     p.click("[data-act=rv-new-acc]")
     ok(p.input_value("#accHints") == "1111" and p.input_value("#accKind") == "tarjeta_credito", "la tarjeta viene con sus 4 dígitos")
+    p.click(".tags[data-tags=acc] .tag-in")
+    p.keyboard.type("Tarjeta Carlos💳🧔"); p.keyboard.press("Enter")
     p.click("#accForm button[type=submit]")
     p.wait_for_selector("text=5 nuevos")
+    # Etiqueta para todos los nuevos y etiqueta de una fila eligiendo una sugerencia
+    p.click(".tags[data-tags=rv-all] .tag-in")
+    p.keyboard.type("Viaje prueba"); p.keyboard.press("Enter")
+    p.wait_for_selector(".tags[data-tags=rv-all] .tag")
+    p.click(".rv-tbl .tags .tag-in >> nth=0")
+    p.keyboard.type("Cafés"); p.keyboard.press("Enter")
     p.click("[data-act=rv-confirm]")
     p.wait_for_selector("text=5 movimientos importados")
+    et = p.evaluate("""() => { const ms = [...window.__fin.S.movements.values()].filter(m => window.__fin.S.accounts.get(m.accountId).kind === 'tarjeta_credito');
+      return {compras: ms.filter(m => m.kind === 'gasto').map(m => m.labels), recibo: ms.find(m => m.kind === 'transferencia').labels}; }""")
+    ok(all("Tarjeta Carlos💳🧔" in l and "Viaje prueba" in l for l in et["compras"]), "las compras llevan la etiqueta de la tarjeta y la de todos los nuevos")
+    ok(any("Cafés" in l for l in et["compras"]), "etiqueta añadida en una fila de la revisión")
+    ok("Tarjeta Carlos💳🧔" not in et["recibo"], "la liquidación no lleva etiquetas de compra")
     estado = p.evaluate("""() => { const S = window.__fin.S, ms = [...S.movements.values()];
       const liq = ms.filter(m => m.kind === 'transferencia' && Math.abs(m.amountCents) === 5530);
       const cafes = ms.filter(m => m.rawConcept === 'Cafeteria plaza').length;
@@ -363,6 +380,22 @@ def flujo_importacion(browser):
     importar(p, "bbva-cuenta-septiembre.xlsx")
     ok("0 nuevos" in p.inner_text("#view") and "Este archivo ya se importó" in p.inner_text("#view"), "reimportar el mismo archivo: 0 nuevos")
     ok(p.evaluate("() => window.__fin.S.movements.size") == n, "no se ha añadido nada")
+    # Filtro por etiqueta y quitar una etiqueta en bloque
+    p.click(".nav-btn[data-view=movimientos]")
+    p.select_option(".f-label", "Viaje prueba")
+    n_viaje = p.locator("tr[data-mov]").count()
+    ok(n_viaje == 4, f"filtro por etiqueta ({n_viaje})")
+    p.check("#selPage")
+    p.click(".tags[data-tags=bulk] .tag-in"); p.keyboard.type("viaje")
+    p.wait_for_selector(".tag-opt.on >> text=Viaje prueba")
+    ok(True, "sugiere las etiquetas que ya existen")
+    p.keyboard.press("Enter")
+    ok(p.inner_text(".tags[data-tags=bulk] .tag") == "Viaje prueba", "elige la sugerencia con Intro (respeta mayúsculas)")
+    p.click("[data-act=bulk-tag-del]")
+    p.wait_for_selector("text=Etiquetas quitadas de 4 movimientos")
+    ok(p.locator("tr[data-mov]").count() == 0, "etiqueta quitada en bloque")
+    p.click("[data-act=clear-filters]")
+    if p.locator("[data-act=sel-none]").count(): p.click("[data-act=sel-none]")
     # Crear una regla desde un movimiento
     p.evaluate("() => window.__fin.commit('', cs => { cs.put('categories', {id:'p1', parent:null, name:'Compras', kind:'gasto'}); cs.put('categories', {id:'c1', parent:'p1', name:'Supermercado', kind:'gasto'}); }, {noUndo:true})")
     p.click(".nav-btn[data-view=movimientos]")

@@ -26,6 +26,7 @@ App de escritorio (PWA para Chrome) que complementa a **Bluecoins** en Android: 
   - Transferencias entre cuentas propias y liquidaciones de tarjeta emparejadas automáticamente.
   - Control de saldo automático al importar y «Deshacer importación».
 - **Reglas** de categorización (contiene / empieza por / expresión regular), con «Crear regla» desde un movimiento.
+- **Etiquetas** con espacios y emojis (como en Bluecoins), con sugerencias de las existentes: en la importación (por fila o para todos los nuevos), automáticas por cuenta, en bloque, filtro por etiqueta y gestión (crear, renombrar, eliminar).
 - **Controles de saldo:** comparan el saldo real del banco (y el de Bluecoins) con el de la app y proponen posibles causas si no cuadra.
 - **Copias de seguridad:** exportar y restaurar un archivo con todos los datos, con recordatorio.
 - Modo claro y oscuro, «Deshacer» en todos los cambios (también con Ctrl+Z) y atajos de teclado.
