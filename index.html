@@ -111,7 +111,7 @@ input[type=checkbox]{width:16px;height:16px;accent-color:var(--accent);margin:0;
 .topbar h1{font-size:19px;font-weight:700;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .top-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
 #menuBtn{display:none}
-.view{padding:20px 24px 48px;width:100%;max-width:1480px}
+.view{padding:20px 24px 48px;width:100%;max-width:2400px}
 .view-sec{margin-top:26px}
 .view>.view-sec:first-child{margin-top:0}
 .sec-head{display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap}
@@ -140,6 +140,10 @@ table.tbl{border-collapse:separate;border-spacing:0;width:100%;font-size:13.5px}
 .tbl tr.click{cursor:pointer}
 .tbl td.chk,.tbl th.chk{width:34px;padding-right:0}
 .tbl td.ellip{max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tbl td.mc{max-width:clamp(150px,calc(100vw - 1175px),620px)}
+.tbl td.mp{max-width:clamp(100px,9vw,320px)}
+.tbl td.mcat{max-width:clamp(130px,12vw,380px)}
+.tbl td.macc{max-width:clamp(90px,8vw,220px)}
 .tbl td.wrap{white-space:normal}
 .tbl tfoot td{position:sticky;bottom:0;background:var(--subtle);font-weight:700;border-top:1px solid var(--line)}
 .tbl .sub{display:block;font-size:12px;color:var(--faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -2317,9 +2321,9 @@ function movRowHtml(m){
   const kindIc=m.kind==='transferencia'?`<span title="Transferencia${m.transferAccountId?' con '+esc(accName(m.transferAccountId)):''}">${icon('swap','ic xs')}</span> `:'';
   const cat=m.kind==='transferencia'?`<span class="chip info">${m.transferAccountId?(m.amountCents<0?'→ ':'← ')+esc(accName(m.transferAccountId)):'Transferencia'}</span>`:m.categoryId?esc(catLabel(m.categoryId)):'<span class="faint">—</span>';
   return `<tr class="click${selMov.has(m.id)?' sel':''}" data-mov="${m.id}"><td class="chk"><input type="checkbox" data-sel="${m.id}"${selMov.has(m.id)?' checked':''} aria-label="Seleccionar"></td>
-    <td class="nowrap">${fmtDate(m.date)}</td><td class="nowrap">${esc(accName(m.accountId))}</td>
-    <td class="ellip" title="${esc(m.rawConcept||movConcept(m))}">${kindIc}${esc(movConcept(m))}${m.notes||m.bankCategory?`<span class="sub">${esc(m.notes||m.bankCategory)}</span>`:''}</td>
-    <td class="ellip">${esc(m.payee)}</td><td class="ellip">${cat}</td>
+    <td class="nowrap">${fmtDate(m.date)}</td><td class="ellip macc" title="${esc(accName(m.accountId))}">${esc(accName(m.accountId))}</td>
+    <td class="ellip mc" title="${esc(m.rawConcept||movConcept(m))}">${kindIc}${esc(movConcept(m))}${m.notes||m.bankCategory?`<span class="sub">${esc(m.notes||m.bankCategory)}</span>`:''}</td>
+    <td class="ellip mp">${esc(m.payee)}</td><td class="ellip mcat" title="${m.kind==='transferencia'?'':esc(catLabel(m.categoryId))}">${cat}</td>
     <td>${m.labels.length?`<div class="chips">${m.labels.map(l=>`<span class="chip">${esc(l)}</span>`).join('')}</div>`:''}</td>
     <td class="num">${amtHtml(m.amountCents,m.kind)}</td><td class="nowrap"><span class="flags">${flags.join('')}</span></td></tr>`;
 }
@@ -2852,7 +2856,32 @@ function classifyRow(r,accountId,claimed=null){
   const rule=own?null:matchRule({...r,accountId}); if(rule) applyRuleSet(m,rule);
   const c=findCounterpart({accountId,date:r.date,amountCents:r.amountCents,hay:ruleHay(r),transferAccountId:m.kind==='transferencia'?m.transferAccountId:null},m.kind==='transferencia',claimed);
   if(c){ claimed&&claimed.add(c.id); Object.assign(m,{kind:'transferencia',categoryId:null,transferAccountId:c.accountId,pairWith:c.id,note:'Se empareja con un movimiento de '+accName(c.accountId)}); }
+  if(m.kind!=='transferencia'){ const got=completeMissing(m,r); if(got.length&&!m.note) m.note=got.join(', ').replace(/^./,x=>x.toUpperCase())+' '+m.learned; }
   return m;
+}
+
+/* Lo que se hizo con movimientos anteriores de concepto idéntico (normalizado): categoría, beneficiario y etiquetas.
+   Solo se usa si al menos el 60 % (con más peso a lo reciente) coincide. */
+const conceptIndex=()=>cached('conceptIdx',()=>{ const idx=new Map(); for(const m of S.movements.values()){ if(m.kind!=='gasto'&&m.kind!=='ingreso') continue; const k=normText(m.rawConcept); if(!k) continue; if(!idx.has(k)) idx.set(k,[]); idx.get(k).push(m); } return idx; });
+function learnFromConcept(rawConcept,kind){
+  const list=(conceptIndex().get(normText(rawConcept))||[]).filter(m=>m.kind===kind&&(m.categoryId||m.payee)); if(!list.length) return null;
+  const today=todayYMD(), wt=m=>Math.pow(0.5,Math.max(0,daysBetween(m.date,today))/90), tot=list.reduce((t,m)=>t+wt(m),0);
+  const best=key=>{ const c=new Map(); for(const m of list){ const k=key(m); if(!k) continue; c.set(k,(c.get(k)||0)+wt(m)); } const b=[...c].sort((a,b)=>b[1]-a[1])[0]; return b&&b[1]>=tot*0.6?b[0]:null; };
+  const lab=best(m=>m.labels.length?JSON.stringify(m.labels):'');
+  return {n:list.length,categoryId:best(m=>m.categoryId),payee:best(m=>m.payee),labels:lab?JSON.parse(lab):[]};
+}
+/* Completa lo que falte (categoría, beneficiario, etiquetas): primero con movimientos anteriores de concepto idéntico; si no, con lo habitual del beneficiario */
+function completeMissing(c,r){
+  if(c.kind==='transferencia'||c.settlement) return [];
+  const got=[], l=learnFromConcept(r.rawConcept,c.kind);
+  if(l){
+    if(!c.categoryId&&l.categoryId){ c.categoryId=l.categoryId; got.push('categoría'); }
+    if(!c.payee&&l.payee){ c.payee=l.payee; got.push('beneficiario'); }
+    if(l.labels.length){ const n=mergeLabels(c.labels,l.labels); if(n.length>c.labels.length){ c.labels=n; got.push('etiquetas'); } }
+    if(got.length) c.learned=`como en ${l.n} ${l.n===1?'anterior':'anteriores'} con el mismo concepto`;
+  }
+  if(!c.categoryId&&c.payee){ const pr=predictMovement(c.payee); if(pr&&pr.by==='exact'&&pr.kind===c.kind&&pr.categoryId){ c.categoryId=pr.categoryId; got.push('categoría'); c.learned=c.learned||`como en ${pr.n} de «${c.payee}»`; } }
+  return got;
 }
 
 /* ================= Historial de Bluecoins =================
@@ -3115,7 +3144,8 @@ function buildReview(fi){
       if(!rv.keepManual.has(x.i)){
         const e=rv.edits.get(x.i)||{};
         Object.assign(x.cls,{kind:e.kind||c.kind,categoryId:'categoryId' in e?e.categoryId:(c.categoryId||x.cls.categoryId),payee:'payee' in e?e.payee:(c.payee||x.cls.payee),labels:'labels' in e?e.labels:mergeLabels(x.cls.labels,c.labels)});
-        x.cls.note=`Sustituye al apuntado a mano el ${fmtDate(c.date)}`;
+        const got=completeMissing(x.cls,x.r);
+        x.cls.note=`Sustituye al apuntado a mano el ${fmtDate(c.date)}`+(got.length?` y completa: ${got.join(', ')}`:'');
       }
     }
   }
@@ -3233,7 +3263,7 @@ async function confirmImport(fi){
       if(c.ruleId) hits.set(c.ruleId,(hits.get(c.ruleId)||0)+1);
       if(x.manual&&!rv.keepManual.has(x.i)&&S.movements.has(x.manual.id)){
         const mm=S.movements.get(x.manual.id); replaced.push(clone(mm));
-        m.notes=mm.notes; m.reviewed=mm.reviewed; if(mm.exportId){ m.exportId=mm.exportId; if(m.categoryId!==mm.categoryId||m.payee!==mm.payee) m.changedAfterExport=true; }
+        m.notes=mm.notes; m.reviewed=mm.reviewed; if(mm.concept) m.concept=mm.concept; if(mm.valueDate&&!m.valueDate) m.valueDate=mm.valueDate; if(mm.exportId){ m.exportId=mm.exportId; if(m.categoryId!==mm.categoryId||m.payee!==mm.payee) m.changedAfterExport=true; }
         cs.del('movements',mm.id);
       }
       if(isT&&m.transferAccountId){
@@ -3681,6 +3711,7 @@ function renderHelp(){
 
   <h2>Duplicados</h2>
   <ul><li><b>Al importar</b>: si el banco trae un movimiento que ya habías apuntado a mano (mismo importe, hasta 5 días de diferencia), la fila sale como <b>Sustituye</b>: al confirmar, se queda el del banco con la categoría, el beneficiario, las etiquetas y las notas que pusiste. Pulsa <b>Sustituye</b> si quieres mantener los dos.</li>
+  <li>Al importar, lo que le falte a cada movimiento nuevo (categoría, beneficiario, etiquetas) se completa con lo que pusiste en movimientos anteriores con el <b>mismo concepto</b> del banco (si al menos el 60 % coincide) o con lo habitual del beneficiario. Lo apuntado a mano manda: solo se completa lo que dejaste vacío. En la revisión, debajo del concepto, pone qué se ha completado.</li>
   <li>Si en una descarga nueva ya no aparece un movimiento que se importó antes (por ejemplo, un cargo duplicado que el banco ha anulado), sale en <b>Ya no aparece en este archivo</b>, marcado para <b>Quitar al confirmar</b>.</li>
   <li>En <span class="path">Movimientos → Estado → Posibles duplicados</span> están los que coinciden en cuenta, fecha, importe y concepto, y los apuntados a mano con su gemelo del banco. Si de verdad son dos, abre uno y pulsa <b>No es duplicado</b>.</li>
   <li>Todo se puede deshacer con <kbd>Ctrl</kbd>+<kbd>Z</kbd> o con <b>Deshacer importación</b>.</li></ul>
@@ -3941,7 +3972,7 @@ window.__fin={S,ui,parseAmount,centsToPlain,centsToComma,parseDateCell,excelSeri
   normText,fingerprint,normMovement,normAccount,normCategory,parseCatLines,balancesAt,balanceAt,flowsBetween,causesFor,
   bluecoinsCsv,movementsToBluecoinsRows,BC_HEADER,commit,undo,backupData,go,ready:()=>!!db,
   readBiff,readCfbStream,rkValue,IMPORTERS,analyzeFile,chainCheck,findHeader,hdrNorm,guessAccount,classifyRow,buildReview,confirmImport,undoImport,
-  ruleMatches,matchRule,predictMovement,dupCandidates,isDup,cardInfo,availableAt,flows,totals,scopeIds,periodRange,insightsFor,budgets,budgetSpent,statsOf,balanceHist,openScopeDialog,applyRulesToFree,bcPlan,confirmBcImport,catLabel,findCounterpart,suggestRuleText,normRule,imp,splitLabels,normLabels,mergeLabels,allLabels};
+  ruleMatches,matchRule,predictMovement,learnFromConcept,dupCandidates,isDup,cardInfo,availableAt,flows,totals,scopeIds,periodRange,insightsFor,budgets,budgetSpent,statsOf,balanceHist,openScopeDialog,applyRulesToFree,bcPlan,confirmBcImport,catLabel,findCounterpart,suggestRuleText,normRule,imp,splitLabels,normLabels,mergeLabels,allLabels};
 </script>
 </body>
 </html>

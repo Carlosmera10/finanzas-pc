@@ -510,6 +510,11 @@ def flujo_importacion(browser):
     p.click("#cfmOk")
     p.wait_for_selector("text=Importación deshecha")
     ok(p.evaluate(cafes) == 2, "deshacer la importación lo devuelve")
+    # Al importar se completa lo que falta con movimientos anteriores de concepto idéntico
+    apr = p.evaluate("""() => { const F = window.__fin, a = [...F.S.accounts.values()].find(x => x.name === 'BBVA');
+      return F.commit('', cs => { for (const [i, d] of [['g1', '2026-08-03'], ['g2', '2026-09-03']]) cs.put('movements', F.normMovement({id: i, accountId: a.id, date: d, amountCents: -2000, kind: 'gasto', rawConcept: 'RECIBO GIMNASIO EJEMPLO', payee: 'Gimnasio', categoryId: 'c1', labels: ['Deporte'], source: 'import'})); }, {noUndo: true})
+        .then(() => { const c = F.classifyRow({rawConcept: 'Recibo gimnasio ejemplo', amountCents: -2000, date: '2026-10-03'}, a.id); return [c.categoryId, c.payee, c.labels, c.note]; }); }""")
+    ok(apr[0] == "c1" and apr[1] == "Gimnasio" and apr[2] == ["Deporte"] and "mismo concepto" in apr[3], f"completa categoría, beneficiario y etiquetas con los anteriores de igual concepto → {apr}")
     sin_desborde(p, "PC importar")
     ok(not errores, "sin errores en la consola (importación): " + "; ".join(errores[:3]))
     ctx.close()
