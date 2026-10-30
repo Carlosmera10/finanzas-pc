@@ -3,7 +3,7 @@
 //   solo si no hay conexión usa la copia guardada.
 // - Guarda también la tipografía para que se vea igual sin conexión.
 // - Solo borra sus propias cachés (prefijo «fin-»): el resto de apps del mismo sitio no se tocan.
-const CACHE = "fin-v12";
+const CACHE = "fin-v13";
 const FONT_CACHE = "fin-fonts-1";
 const FILES = ["./", "index.html", "app.webmanifest", "icon-192.png", "icon-512.png"];
 const FONT_HOSTS = ["fonts.googleapis.com", "fonts.gstatic.com"];

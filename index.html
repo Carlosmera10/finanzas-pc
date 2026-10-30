@@ -381,6 +381,10 @@ details.vtable .tbl{border:1px solid var(--line);border-radius:10px}
 .dup-warn{border:1px solid var(--warn-line);background:var(--warn-bg);color:var(--ink);border-radius:9px;padding:9px 12px;font-size:13px}
 .dup-warn .dw-h{display:flex;align-items:center;gap:6px;font-weight:700;color:var(--warn);margin-bottom:4px}
 .dup-warn ul{margin:0;padding-left:20px}
+.extra-note{display:flex;align-items:center;gap:10px;flex-wrap:wrap;border:1px solid var(--warn-line);background:var(--warn-bg);color:var(--ink);border-radius:10px;padding:9px 12px;font-size:13.5px;margin-bottom:14px}
+.extra-note>.ic{color:var(--warn);flex:none}
+.extra-note>span{flex:1 1 260px;min-width:0}
+.extra-tbl td.num .sub{display:block;font-size:11.5px;color:var(--muted);font-weight:500}
 .rv-missing{margin-top:10px;border:1px solid var(--warn-line);background:var(--warn-bg);border-radius:9px;padding:9px 12px;font-size:13px;display:flex;flex-direction:column;gap:4px}
 .rv-missing .dw-h{display:flex;align-items:center;gap:6px;font-weight:700;color:var(--warn)}
 button.chip{border:0;cursor:pointer;font:inherit;font-size:12px;font-weight:600}
@@ -494,6 +498,7 @@ dl.kv.avail{margin-top:10px}
   <symbol id="i-chart" viewBox="0 0 24 24"><path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></symbol>
   <symbol id="i-trend" viewBox="0 0 24 24"><path d="M16 7h6v6"/><path d="m22 7-8.5 8.5-5-5L2 17"/></symbol>
   <symbol id="i-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></symbol>
+  <symbol id="i-zap" viewBox="0 0 24 24"><path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/></symbol>
   <symbol id="i-layers" viewBox="0 0 24 24"><path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></symbol>
   <symbol id="i-monitor" viewBox="0 0 24 24"><rect width="20" height="14" x="2" y="3" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></symbol>
 </svg>
@@ -555,7 +560,7 @@ dl.kv.avail{margin-top:10px}
       <label class="fld" id="movConceptWrap">Concepto<input class="inp" type="text" id="movConcept" autocomplete="off"></label>
       <div class="raw full" id="movRaw" hidden style="grid-column:1/-1"></div>
       <div class="fld">Etiquetas<div id="movLabelsBox"></div></div>
-      <div class="fld" style="justify-content:flex-end"><label class="chk"><input type="checkbox" id="movReviewed">Revisado</label></div>
+      <div class="fld" style="display:flex;flex-direction:column;justify-content:flex-end;align-items:flex-start;gap:6px"><label class="chk"><input type="checkbox" id="movReviewed">Revisado</label><label class="chk" id="movExtraWrap" title="Gasto o ingreso puntual: sigue en Estadísticas y Balance, pero no cuenta en los presupuestos"><input type="checkbox" id="movExtra">Extraordinario (fuera de presupuestos)</label></div>
       <label class="fld full">Notas<textarea class="inp" id="movNotes" rows="2"></textarea></label>
     </div>
     <div class="dup-warn" id="movDup" hidden></div>
@@ -668,6 +673,16 @@ dl.kv.avail{margin-top:10px}
     <div id="propBody"></div>
   </div>
   <div class="dlg-foot"><span class="sp"></span><button type="button" class="btn sec" data-close>Cancelar</button><button type="submit" class="btn">Crear los marcados</button></div>
+</form></dialog>
+
+<!-- Posibles gastos extraordinarios -->
+<dialog id="extraDlg" style="width:min(900px,calc(100vw - 24px))"><form class="dlg" id="extraForm" novalidate>
+  <div class="dlg-head"><h2>Posibles gastos extraordinarios</h2><button type="button" class="btn ghost icon" data-close aria-label="Cerrar"><svg class="ic"><use href="#i-x"/></svg></button></div>
+  <div class="dlg-body">
+    <p class="note" style="margin-top:0">Gastos muy por encima del mes habitual de su categoría que no se repiten cada año. Los <b>marcados</b> pasan a ser extraordinarios: siguen en Estadísticas y Balance, pero no cuentan en los presupuestos. Los <b>desmarcados</b> no se volverán a proponer.</p>
+    <div id="extraBody"></div>
+  </div>
+  <div class="dlg-foot"><span class="sp"></span><button type="button" class="btn sec" data-close>Más tarde</button><button type="submit" class="btn"><svg class="ic sm"><use href="#i-check"/></svg>Guardar</button></div>
 </form></dialog>
 
 <!-- Regla -->
@@ -1245,6 +1260,7 @@ function normMovement(m){
     detail:str(m.detail,500),bankCategory:str(m.bankCategory,160),bankRef:str(m.bankRef,80),bcRef:str(m.bcRef,400),historic:!!m.historic,
     fingerprint:str(m.fingerprint,800),occurrence:isInt(m.occurrence)&&m.occurrence>0?m.occurrence:1,
     exportId:m.exportId?str(m.exportId,64):null,changedAfterExport:!!m.changedAfterExport,reviewed:!!m.reviewed,notDup:!!m.notDup,
+    extra:!!m.extra&&m.kind!=='transferencia',notExtra:!!m.notExtra,
     createdAt:str(m.createdAt,40)||nowISO(),updatedAt:str(m.updatedAt,40)};
 }
 function normCategory(c){
@@ -1838,6 +1854,74 @@ document.addEventListener('focusout',e=>{ if(e.target.closest&&e.target.closest(
 
 /* ================= Presupuestos ================= */
 const budgets=()=>(getMeta('budgets')||[]).filter(b=>S.categories.has(b.categoryId));
+/* Movimientos extraordinarios: no cuentan en los presupuestos (ni en lo gastado del mes ni en el histórico con que se proponen).
+   Siguen en Estadísticas, Balance y Resumen. */
+const budFlows=ids=>cached('budflows|'+[...ids].sort().join(','),()=>flows(ids).filter(x=>!x.m.extra));
+/* Posibles extraordinarios (solo gastos con categoría), mirando los 24 meses completos anteriores y el mes actual:
+   - El mes habitual de la categoría es la mediana de sus 24 meses (sin los ya marcados como extraordinarios).
+   - Es candidato el gasto que por sí solo supera: 250 €, 3 veces el mes habitual y el mes habitual + 3 desviaciones robustas (MAD).
+     Si la categoría no tiene gasto la mayoría de los meses (mediana 0), el gasto debe suponer al menos el 60 % de lo de los 24 meses.
+   - No es candidato si se repite cada año: mismo beneficiario o concepto, entre 320 y 410 días antes o después, con importe parecido (±50 %).
+   - Los descartados («No es extraordinario») no se vuelven a proponer. */
+const EXTRA_MIN=25000;
+function extraSuggestions(ids){
+  return cached('extrasug|'+[...ids].sort().join(','),()=>{
+    const ym=ymOf(todayYMD()), months=ymRange(ymAdd(ym,-24),ymAdd(ym,-1)), from=months[0]+'-01';
+    const gastos=flows(ids).filter(x=>x.k==='gasto'&&x.par&&x.v>0);
+    const keyOf=m=>normText(m.payee)||normText(movConcept(m));
+    const byKey=new Map(); for(const x of gastos){ const k=x.par+'|'+keyOf(x.m); if(!byKey.has(k)) byKey.set(k,[]); byKey.get(k).push(x); }
+    const yearly=x=>{ const k=keyOf(x.m); if(!k) return false;
+      return (byKey.get(x.par+'|'+k)||[]).some(y=>{ if(y.m.id===x.m.id) return false; const d=Math.abs(daysBetween(x.d,y.d)), r=y.v/x.v; return d>=320&&d<=410&&r>=0.5&&r<=1.5; }); };
+    const byCat=new Map(); for(const x of gastos){ if(x.d<from) continue; if(!byCat.has(x.par)) byCat.set(x.par,[]); byCat.get(x.par).push(x); }
+    const out=[];
+    for(const [p,list] of byCat){
+      const tot=new Map(months.map(m=>[m,0])); for(const x of list) if(!x.m.extra&&tot.has(x.ym)) tot.set(x.ym,tot.get(x.ym)+x.v);
+      const vals=[...tot.values()], s=statsOf(vals), typ=s.med, mad=statsOf(vals.map(v=>Math.abs(v-typ))).med, sum=vals.reduce((a,b)=>a+b,0);
+      const thr=typ>0?Math.max(EXTRA_MIN,3*typ,typ+3*1.4826*mad):Math.max(EXTRA_MIN,0.6*sum);
+      for(const x of list){ if(x.m.extra||x.m.notExtra||x.v<thr||yearly(x)) continue; out.push({m:x.m,v:x.v,par:p,typ}); }
+    }
+    return out.sort((a,b)=>a.m.date<b.m.date?1:a.m.date>b.m.date?-1:b.v-a.v);
+  });
+}
+const extraSugIds=()=>new Set(extraSuggestions(scopeIds('presupuestos',null)).map(s=>s.m.id));
+/* Aviso con los posibles extraordinarios (en Presupuestos y en «Proponer presupuestos») */
+function extraNoteHtml(ids){
+  const sug=extraSuggestions(ids); if(!sug.length) return '';
+  const top=[...sug].sort((a,b)=>b.v-a.v)[0], n=sug.length;
+  return `<div class="extra-note">${icon('zap')}<span><b>${n===1?'Un posible gasto extraordinario':n+' posibles gastos extraordinarios'}</b> ${n===1?'infla':'inflan'} la media de ${n===1?'su categoría':'sus categorías'}: por ejemplo, ${money(top.v)} en ${esc(parentName(top.par))} el ${fmtDate(top.m.date)}, cuando un mes normal son ${money(top.typ)}.</span><button type="button" class="btn sec sm" data-act="extra-review">Revisar</button></div>`;
+}
+function openExtraDialog(){
+  const sug=extraSuggestions(scopeIds('presupuestos',null));
+  if(!sug.length){ showToast('No hay posibles gastos extraordinarios por revisar'); return; }
+  $('extraBody').innerHTML=`<div class="tbl-wrap"><table class="tbl extra-tbl"><thead><tr><th class="chk"><input type="checkbox" id="extraAll" checked aria-label="Marcar todos"></th><th>Fecha</th><th>Concepto</th><th>Categoría</th><th class="num">Importe</th><th class="num">Mes habitual</th></tr></thead><tbody>
+    ${sug.map(s=>`<tr><td class="chk"><input type="checkbox" data-extra="${s.m.id}" checked aria-label="Extraordinario"></td><td class="nowrap">${fmtDate(s.m.date)}</td>
+      <td class="ellip" title="${esc(s.m.rawConcept||movConcept(s.m))}">${esc(movConcept(s.m))}<span class="sub">${esc([s.m.payee,accName(s.m.accountId)].filter(Boolean).join(' · '))}</span></td>
+      <td class="ellip">${esc(catLabel(s.m.categoryId))}</td><td class="num">${money(s.v)}</td>
+      <td class="num">${money(s.typ)}${s.typ>0?`<span class="sub">${NF_INT.format(Math.round(s.v/s.typ))} veces</span>`:''}</td></tr>`).join('')}
+  </tbody></table></div>`;
+  openDlg($('extraDlg'));
+}
+$('extraBody').addEventListener('change',e=>{ const boxes=[...$('extraBody').querySelectorAll('input[data-extra]')];
+  if(e.target.id==='extraAll'){ for(const b of boxes) b.checked=e.target.checked; return; }
+  $('extraAll').checked=boxes.every(b=>b.checked); });
+$('extraForm').addEventListener('submit',e=>{
+  e.preventDefault();
+  const boxes=[...$('extraBody').querySelectorAll('input[data-extra]')];
+  closeDlg($('extraDlg'));
+  commit('',cs=>{ let a=0,d=0;
+    for(const b of boxes){ const m=S.movements.get(b.dataset.extra); if(!m) continue;
+      if(b.checked){ cs.put('movements',{...clone(m),extra:true,notExtra:false}); a++; } else { cs.put('movements',{...clone(m),notExtra:true}); d++; } }
+    if(!a&&!d) return false;
+    return [a?`${a} marcado${a>1?'s':''} como extraordinario${a>1?'s':''}`:'',d?`${d} descartado${d>1?'s':''}`:''].filter(Boolean).join(' y ').replace(/^./,c=>c.toUpperCase());
+  }).then(ok=>{ if(ok&&$('propDlg').open) syncPropose(); });
+});
+/* Marcar o quitar «Extraordinario» en varios movimientos (desde la selección de Movimientos) */
+function setExtra(idList,on){
+  return commit('',cs=>{ let n=0;
+    for(const id of idList){ const m=S.movements.get(id); if(!m||m.kind==='transferencia'||!!m.extra===on) continue;
+      cs.put('movements',{...clone(m),extra:on,notExtra:!on}); n++; }
+    return n?(on?`${n} marcados como extraordinarios`:`${n} ya no son extraordinarios`):false; });
+}
 /* Gasto (en céntimos, positivo) de una categoría (principal con sus subcategorías, o una subcategoría) en un rango */
 function spentCat(list,catId){ const c=S.categories.get(catId); let t=0; for(const x of list){ if(x.k!=='gasto') continue; if(c&&!c.parent?x.par===catId:x.cat===catId) t+=x.v; } return t; }
 function monthlySeries(list,catId,months){ return months.map(ym=>spentCat(list.filter(x=>x.ym===ym),catId)); }
@@ -1861,7 +1945,7 @@ function insightsFor(ids){
   const out=[], today=todayYMD(), ym=ymOf(today), last=ymAdd(ym,-1), all=flows(ids);
   const months12=ymRange(ymAdd(last,-11),last);
   /* 1. Presupuestos del mes */
-  const cur=inRange(all,ym+'-01',ymEnd(ym)), dayFrac=(+today.slice(8,10))/(+ymEnd(ym).slice(8,10));
+  const cur=inRange(all,ym+'-01',ymEnd(ym)).filter(x=>!x.m.extra), dayFrac=(+today.slice(8,10))/(+ymEnd(ym).slice(8,10));
   for(const b of budgets()){ const sp=spentCat(cur,b.categoryId), pr=Math.round(sp/Math.max(dayFrac,0.1)), st=budgetState(sp,b.amountCents,pr), n=catLabel(b.categoryId);
     if(st.cls==='crit') out.push({sev:'crit',text:`Presupuesto de ${n} superado: ${money(sp)} de ${money(b.amountCents)}.`,view:'presupuestos'});
     else if(st.cls==='warn') out.push({sev:'warn',text:`${n}: al ritmo actual acabará el mes en ${money(pr)} (presupuesto ${money(b.amountCents)}).`,view:'presupuestos'}); }
@@ -1932,7 +2016,7 @@ function renderResumen(){
     return `<div class="hb"${tipAttr([parentName(p),'Este mes\t'+money(val),'Media mensual (12 meses)\t'+money(Math.round(avg))])}><span class="hb-l"><i style="background:${catColor(p)}"></i>${esc(parentName(p))}</span><span class="hb-bar"><span style="width:${val/maxV*100}%;background:${catColor(p)}"></span>${avg?`<b class="hb-avg" style="left:${avg/maxV*100}%"></b>`:''}</span><span class="hb-v">${money(val)}</span></div>`; }).join('')}<div class="vsub"><b class="hb-avg-key"></b> media mensual de los 12 meses anteriores</div></div>`:'<p class="muted">Sin gastos este mes.</p>';
   /* Presupuesto del mes */
   const bs=budgets(); let budgetCard='';
-  if(bs.length){ const bIds=scopeIds('presupuestos',null), cur=inRange(flows(bIds),ym+'-01',ymEnd(ym)), bt=budgetTotal(bs);
+  if(bs.length){ const bIds=scopeIds('presupuestos',null), cur=inRange(budFlows(bIds),ym+'-01',ymEnd(ym)), bt=budgetTotal(bs);
     const spent=budgetSpent(cur,bs);
     const st=budgetState(spent,bt,Math.round(spent/Math.max(0.1,(+today.slice(8,10))/(+ymEnd(ym).slice(8,10)))));
     budgetCard=vizCard({title:'Presupuesto del mes',page:null,body:`<div class="hero-sm">${money(spent)} <span class="muted">de ${money(bt)}</span></div>${meterHtml(spent,bt,st)}<button class="btn ghost sm" data-act="go-view" data-view="presupuestos">Ver presupuestos${icon('chev-r','ic xs')}</button>`}); }
@@ -2141,7 +2225,8 @@ function renderBudgets(){
   const v=$('view'); VIZ.clear();
   setActions(`${scopeChip('presupuestos',null,'flow')}<button class="btn sec" data-act="bud-propose">${icon('wand')}<span class="lbl">Proponer presupuestos</span></button><button class="btn" data-act="bud-new">${icon('plus')}<span class="lbl">Nuevo presupuesto</span></button>`);
   const today=todayYMD(), ym=ui.bud.ym||ymOf(today), isCur=ym===ymOf(today);
-  const ids=scopeIds('presupuestos',null), all=flows(ids), cur=inRange(all,ym+'-01',ymEnd(ym));
+  const ids=scopeIds('presupuestos',null), all=budFlows(ids), cur=inRange(all,ym+'-01',ymEnd(ym));
+  const extraTot=flows(ids).filter(x=>x.m.extra&&x.k==='gasto'&&x.ym===ym).reduce((s,x)=>s+x.v,0);
   const frac=isCur?(+today.slice(8,10))/(+ymEnd(ym).slice(8,10)):1;
   const hist=ymRange(ymAdd(ym,-12),ymAdd(ym,-1)), histList=inRange(all,hist[0]+'-01',ymEnd(hist[11]));
   const bs=budgets().map(b=>{ const c=S.categories.get(b.categoryId), sp=spentCat(cur,b.categoryId), pr=isCur?Math.round(sp/Math.max(frac,0.1)):sp, s12=statsOf(monthlySeries(histList,b.categoryId,hist));
@@ -2157,13 +2242,15 @@ function renderBudgets(){
   const chart=colChart({labels:m12.map(monthShort),tipTitles:m12.map(monthLong),series:[{name:'Gastado en categorías con presupuesto',color:'var(--s2)',values:spentM}],line:{name:'Presupuesto actual',color:'var(--ink-2)',dots:false,dashed:true,values:m12.map(()=>bt/100)}});
   v.innerHTML=`<div class="filters st-filters"><div class="fld">Mes<div class="seg"><button type="button" data-act="bud-prev" aria-label="Mes anterior">${icon('chev-l')}</button><button type="button" aria-pressed="true" disabled>${monthLong(ym)}</button><button type="button" data-act="bud-next" aria-label="Mes siguiente">${icon('chev-r')}</button></div></div>
     ${!isCur?`<button class="btn ghost sm" data-act="bud-today">Este mes</button>`:''}</div>
+  ${extraNoteHtml(ids)}
   ${bs.length?`<div class="vgrid">
     ${vizCard({title:'Total del mes',page:null,body:`<div class="hero-sm">${money(spentTot)} <span class="muted">de ${money(bt)}</span></div>${meterHtml(spentTot,bt,st)}
       <dl class="kv"><dt>Queda</dt><dd>${amtHtml(bt-spentTot)}</dd>${isCur?`<dt>Previsión a fin de mes</dt><dd>${money(Math.round(spentTot/Math.max(frac,0.1)))}</dd>`:''}<dt>Gasto sin presupuesto</dt><dd>${money(unb.reduce((s,x)=>s+x[1],0))}</dd>
+      ${extraTot?`<dt>Gasto extraordinario (fuera del presupuesto)</dt><dd><a href="#" data-act="extra-movs" data-ym="${ym}">${money(extraTot)}</a></dd>`:''}
       <dt>Ingreso medio (12 meses)</dt><dd>${money(incAvg)}</dd><dt>Ahorro previsto con el presupuesto</dt><dd>${amtHtml(incAvg-bt-Math.round(unb.reduce((s,x)=>s+x[1],0)))}</dd></dl>`})}
     ${vizCard({title:'Gastado frente al presupuesto',sub:'Últimos 12 meses, categorías con presupuesto',page:null,body:legendHtml([{name:'Gastado',color:'var(--s2)'},{name:'Presupuesto actual',color:'var(--ink-2)'}])+vizSlot({draw:chart,aria:'Gastado frente al presupuesto'},220)})}
   </div>
-  <section class="view-sec"><div class="tbl-wrap"><table class="tbl bud-tbl"><thead><tr><th>Categoría</th><th class="num">Presupuesto</th><th class="num">Gastado</th><th>Uso</th><th class="num">Queda</th>${isCur?'<th class="num">Previsión</th>':''}<th class="num">Media 12 meses</th><th>Últimos 12 meses</th><th></th></tr></thead><tbody>
+  <section class="view-sec"><div class="tbl-wrap"><table class="tbl bud-tbl"><thead><tr><th>Categoría</th><th class="num">Presupuesto</th><th class="num">Gastado</th><th>Uso</th><th class="num">Queda</th>${isCur?'<th class="num">Previsión</th>':''}<th class="num" title="Sin los movimientos extraordinarios">Media 12 meses</th><th title="Sin los movimientos extraordinarios">Últimos 12 meses</th><th></th></tr></thead><tbody>
     ${bs.map(x=>`<tr><td>${x.c.parent?'<span class="faint">↳ </span>':''}${esc(catLabel(x.b.categoryId))}</td><td class="num">${money(x.b.amountCents)}</td><td class="num">${money(x.sp)}</td>
       <td class="bud-meter">${meterHtml(x.sp,x.b.amountCents,x.st)}</td><td class="num">${amtHtml(x.b.amountCents-x.sp)}</td>${isCur?`<td class="num">${money(x.pr)}</td>`:''}<td class="num">${money(x.s12.avg)}</td>
       <td>${sparkSvg(monthlySeries(inRange(all,ymAdd(ym,-11)+'-01',ymEnd(ym)),x.b.categoryId,ymRange(ymAdd(ym,-11),ym)))}</td>
@@ -2184,12 +2271,12 @@ function openBudgetDialog(id,catId=''){
   syncBudgetHelp(); openDlg($('budDlg')); $('budAmount').focus();
 }
 function syncBudgetHelp(){
-  const cat=$('budCat').value, ym=ymOf(todayYMD()), ids=scopeIds('presupuestos',null), all=flows(ids);
+  const cat=$('budCat').value, ym=ymOf(todayYMD()), ids=scopeIds('presupuestos',null), all=budFlows(ids);
   const h12=ymRange(ymAdd(ym,-12),ymAdd(ym,-1)), v12=monthlySeries(inRange(all,h12[0]+'-01',ymEnd(h12[11])),cat,h12), s12=statsOf(v12), s6=statsOf(v12.slice(-6)), s3=statsOf(v12.slice(-3));
   const lyv=spentCat(inRange(all,ymAdd(ym,-12)+'-01',ymEnd(ymAdd(ym,-12))),cat);
   const opts=[['Media 12 meses',s12.avg],['Mediana 12 meses',s12.med],['Percentil 75 (12 meses)',s12.p75],['Media 6 meses',s6.avg],['Media 3 meses',s3.avg],['Mes más alto (12 meses)',s12.max],['Mismo mes del año pasado',lyv]];
   $('budHelp').innerHTML=`<div class="bud-opts">${opts.map(([l,v])=>`<button type="button" class="bud-opt" data-bud-fill="${v}"><span>${l}</span><b>${money(v)}</b></button>`).join('')}</div>
-    ${sparkSvg(v12,260,40)}<div class="vsub">Gasto mensual de los últimos 12 meses (cuentas de la página de presupuestos)</div>`;
+    ${sparkSvg(v12,260,40)}<div class="vsub">Gasto mensual de los últimos 12 meses, sin los extraordinarios (cuentas de la página de presupuestos)</div>`;
 }
 $('budCat').addEventListener('change',syncBudgetHelp);
 $('budHelp').addEventListener('click',e=>{ const b=e.target.closest('[data-bud-fill]'); if(b) $('budAmount').value=centsToInput(roundTo(+b.dataset.budFill,5)); });
@@ -2206,12 +2293,13 @@ $('budDelete').addEventListener('click',()=>{ const id=budEditing; if(!id) retur
 /* Proponer presupuestos para todas las categorías principales con gasto */
 function openProposeDialog(){ syncPropose(); openDlg($('propDlg')); }
 function syncPropose(){
-  const method=$('propMethod').value, step=+$('propRound').value, ym=ymOf(todayYMD()), all=flows(scopeIds('presupuestos',null));
+  const method=$('propMethod').value, step=+$('propRound').value, ym=ymOf(todayYMD()), ids=scopeIds('presupuestos',null), all=budFlows(ids);
   const h=ymRange(ymAdd(ym,-12),ymAdd(ym,-1)), hl=inRange(all,h[0]+'-01',ymEnd(h[11])), have=new Set(budgets().map(b=>b.categoryId));
+  const ex=inRange(flows(ids),h[0]+'-01',ymEnd(h[11])).filter(x=>x.m.extra), exG=ex.filter(x=>x.k==='gasto').reduce((s,x)=>s+x.v,0);
   const rows=catParents('gasto').map(p=>{ const vals=monthlySeries(hl,p.id,h), s=statsOf(vals), base=method==='med'?s.med:method==='p75'?s.p75:method==='avg3'?statsOf(vals.slice(-3)).avg:method==='avg6'?statsOf(vals.slice(-6)).avg:s.avg;
     return {p,s,val:base>0?roundTo(base,step):0,have:have.has(p.id)}; }).filter(r=>r.s.avg>0||r.have).sort((a,b)=>b.s.avg-a.s.avg);
   const inc=Math.round(totals(hl).inc/12);
-  $('propBody').innerHTML=`<div class="tbl-wrap"><table class="tbl"><thead><tr><th></th><th>Categoría</th><th class="num">Media</th><th class="num">Mediana</th><th class="num">Máximo</th><th class="num">Propuesta</th></tr></thead><tbody>
+  $('propBody').innerHTML=`${extraNoteHtml(ids)}${ex.length?`<p class="note">Sin ${ex.length===1?'el movimiento extraordinario':`los ${ex.length} movimientos extraordinarios`} de estos 12 meses${exG?` (${money(exG)} de gasto)`:''}.</p>`:''}<div class="tbl-wrap"><table class="tbl"><thead><tr><th></th><th>Categoría</th><th class="num">Media</th><th class="num">Mediana</th><th class="num">Máximo</th><th class="num">Propuesta</th></tr></thead><tbody>
     ${rows.map(r=>`<tr><td><input type="checkbox" data-prop="${r.p.id}" data-val="${r.val}"${r.have||!r.val?'':' checked'}${r.have?' disabled title="Ya tiene presupuesto"':''}></td><td>${esc(r.p.name)}${r.have?' <span class="chip">ya tiene</span>':''}</td><td class="num">${money(r.s.avg)}</td><td class="num">${money(r.s.med)}</td><td class="num">${money(r.s.max)}</td><td class="num"><b>${money(r.val)}</b></td></tr>`).join('')}
   </tbody></table></div><dl class="calc" id="propCalc"></dl>`;
   syncProposeTotals(inc);
@@ -2229,12 +2317,12 @@ $('propForm').addEventListener('submit',e=>{
 
 /* ================= Vista: Movimientos ================= */
 const selMov=new Set();
-const STATE_OPTS=[['','Todos'],['sincat','Sin categoría'],['norev','Sin revisar'],['noexp','Sin exportar a Bluecoins'],['pend','Pendientes'],['manual','Manuales'],['sinpareja','Transferencias sin pareja'],['dups','Posibles duplicados'],['cambiado','Cambiados tras exportar'],['bluecoins','Histórico de Bluecoins']];
+const STATE_OPTS=[['','Todos'],['sincat','Sin categoría'],['norev','Sin revisar'],['noexp','Sin exportar a Bluecoins'],['pend','Pendientes'],['manual','Manuales'],['sinpareja','Transferencias sin pareja'],['dups','Posibles duplicados'],['cambiado','Cambiados tras exportar'],['bluecoins','Histórico de Bluecoins'],['extra','Extraordinarios'],['extrasug','Posibles extraordinarios']];
 function filteredMovs(){
   const f=ui.mf;
   return cached('flt|'+JSON.stringify([f.acc,f.from,f.to,f.cat,f.label,f.state,f.q]),()=>{
     const q=normText(f.q), qAmt=f.q&&/\d/.test(f.q)?parseAmount(f.q):null;
-    let catSet=null;
+    let catSet=null; const sugIds=f.state==='extrasug'?extraSugIds():null;
     if(f.cat&&f.cat.startsWith('p:')) catSet=new Set([f.cat.slice(2),...catChildren(f.cat.slice(2)).map(c=>c.id)]);
     return allMovs().filter(m=>{
       if(f.acc&&m.accountId!==f.acc) return false;
@@ -2252,6 +2340,8 @@ function filteredMovs(){
         case 'dups': if(!isDup(m)) return false; break;
         case 'cambiado': if(!m.changedAfterExport) return false; break;
         case 'bluecoins': if(m.source!=='bluecoins') return false; break;
+        case 'extra': if(!m.extra) return false; break;
+        case 'extrasug': if(!sugIds.has(m.id)) return false; break;
       }
       if(q){
         const hay=normText([movConcept(m),m.rawConcept,m.detail,m.bankCategory,m.payee,m.notes,m.labels.join(' '),catLabel(m.categoryId)].join(' ')).includes(q);
@@ -2300,6 +2390,8 @@ function renderMovs(){
       <button class="btn sec sm" data-act="bulk-tag-add">${icon('plus')}Añadir</button>
       <button class="btn sec sm" data-act="bulk-tag-del">${icon('x')}Quitar</button>
       <button class="btn sec sm" data-act="bulk-rev">${icon('check')}Marcar revisados</button>
+      <button class="btn sec sm" data-act="bulk-extra" title="No cuentan en los presupuestos">${icon('zap')}Extraordinarios</button>
+      <button class="btn sec sm" data-act="bulk-noextra">${icon('x')}No extraordinarios</button>
       <button class="btn danger sm" data-act="bulk-del">${icon('trash')}Eliminar</button>
       <button class="btn ghost sm" data-act="sel-none">${icon('x')}Quitar selección</button></div>`:''}
     ${list.length?`<div class="tbl-wrap tall"><table class="tbl mv-tbl"><thead><tr>
@@ -2318,6 +2410,7 @@ function movRowHtml(m){
   if(m.historic) flags.push(`<span title="Histórico de Bluecoins: cuenta en las estadísticas, no en el saldo">${icon('archive')}</span>`);
   if(m.changedAfterExport) flags.push(`<span class="warn" title="Cambiado después de exportarlo a Bluecoins">${icon('alert')}</span>`);
   else if(m.exportId) flags.push(`<span title="${m.exportId==='bluecoins'?'Ya está en Bluecoins':'Exportado a Bluecoins'}">${icon('send')}</span>`);
+  if(m.extra) flags.push(`<span class="warn" title="Extraordinario: no cuenta en los presupuestos">${icon('zap')}</span>`);
   if(m.reviewed) flags.push(`<span class="ok" title="Revisado">${icon('check-circle')}</span>`);
   const kindIc=m.kind==='transferencia'?`<span title="Transferencia${m.transferAccountId?' con '+esc(accName(m.transferAccountId)):''}">${icon('swap','ic xs')}</span> `:'';
   const cat=m.kind==='transferencia'?`<span class="chip info">${m.transferAccountId?(m.amountCents<0?'→ ':'← ')+esc(accName(m.transferAccountId)):'Transferencia'}</span>`:m.categoryId?esc(catLabel(m.categoryId)):'<span class="faint">—</span>';
@@ -2435,6 +2528,7 @@ function openMovDialog(id){
   $('movLabelsBox').innerHTML=tagEditorHtml('mov',movTags);
   $('movNotes').value=m?m.notes:'';
   $('movReviewed').checked=m?m.reviewed:true;
+  $('movExtra').checked=!!(m&&m.extra);
   const pairManual=m&&m.transferPairId&&m.source==='manual';
   for(const el of [$('movAcc'),$('movDate'),$('movAmount')]) el.disabled=imported;
   $('movLockLine').hidden=!imported;
@@ -2449,7 +2543,8 @@ function openMovDialog(id){
     if(isInt(m.bankBalanceCents)) chips.push(`<span class="chip">Saldo del banco: ${money(m.bankBalanceCents)}</span>`);
     if(m.bankCategory) chips.push(`<span class="chip">${esc(m.bankCategory)}</span>`);
     if(m.valueDate&&m.valueDate!==m.date) chips.push(`<span class="chip">Fecha valor: ${fmtDate(m.valueDate)}</span>`);
-    if(isDup(m)) chips.push(`<span class="chip warn">${icon('alert','ic xs')}Posible duplicado</span><button type="button" class="btn ghost sm" id="movNotDup">No es duplicado</button>`); }
+    if(isDup(m)) chips.push(`<span class="chip warn">${icon('alert','ic xs')}Posible duplicado</span><button type="button" class="btn ghost sm" id="movNotDup">No es duplicado</button>`);
+    if(!m.extra&&extraSugIds().has(m.id)) chips.push(`<span class="chip warn">${icon('zap','ic xs')}Posible gasto extraordinario</span><button type="button" class="btn ghost sm" id="movNotExtra">No es extraordinario</button>`); }
   $('movChips').innerHTML=chips.join('');
   $('movDelete').hidden=!m; $('movRule').hidden=!m||m.kind==='transferencia'&&!!m.transferPairId&&m.source==='manual';
   $('movCat').innerHTML=''; $('movOther').innerHTML='';
@@ -2469,6 +2564,8 @@ $('movConcept').addEventListener('change',()=>{ if(!$('movPayee').value.trim()) 
 $('movCat').addEventListener('change',()=>movTouched.add('cat'));
 /* «No es duplicado»: se marca el movimiento y sus gemelos para que no vuelvan a avisar */
 $('movChips').addEventListener('click',e=>{
+  if(e.target.closest('#movNotExtra')&&movEditing){ const m=S.movements.get(movEditing.id); if(!m) return;
+    closeDlg($('movDlg')); commit('Ya no se propondrá como extraordinario',cs=>cs.put('movements',{...clone(m),notExtra:true})); return; }
   if(!e.target.closest('#movNotDup')||!movEditing) return;
   const m=S.movements.get(movEditing.id); if(!m) return;
   const k=dupKey(m), twins=[...S.movements.values()].filter(x=>x.id===m.id||dupKey(x)===k||(manualTwins().has(m.id)&&manualTwins().has(x.id)&&dupCandidates({id:m.id,accountId:m.accountId,date:m.date,amountCents:m.amountCents},5).some(y=>y.id===x.id)));
@@ -2481,7 +2578,7 @@ $('movOther').addEventListener('change',checkMovDup);
 function syncMovKind(m=movEditing){
   for(const b of $('movKind').querySelectorAll('button')) b.setAttribute('aria-pressed',String(b.dataset.kind===movKind));
   const isT=movKind==='transferencia';
-  $('movCatWrap').hidden=isT; $('movOtherWrap').hidden=!isT;
+  $('movCatWrap').hidden=isT; $('movOtherWrap').hidden=!isT; $('movExtraWrap').hidden=isT;
   const acc=$('movAcc').value;
   let other=m?(m.transferAccountId||''):'';
   if(m&&m.transferPairId){ const p=[...S.movements.values()].find(x=>x.transferPairId===m.transferPairId&&x.id!==m.id); if(p) other=p.accountId; }
@@ -2515,7 +2612,7 @@ function saveMovDialog(){
   }
   const other=$('movOther').value||null;
   if(movKind==='transferencia'&&!imported&&!(m&&m.transferPairId)&&!other){ showToast('Elige la otra cuenta de la transferencia',{error:true}); $('movOther').focus(); return false; }
-  const fields={concept:$('movConcept').value.trim().slice(0,300),payee:$('movPayee').value.trim().slice(0,120),labels:normLabels(movTags),notes:$('movNotes').value.trim().slice(0,2000),reviewed:$('movReviewed').checked};
+  const fields={concept:$('movConcept').value.trim().slice(0,300),payee:$('movPayee').value.trim().slice(0,120),labels:normLabels(movTags),notes:$('movNotes').value.trim().slice(0,2000),reviewed:$('movReviewed').checked,extra:movKind!=='transferencia'&&$('movExtra').checked};
   const categoryId=movKind==='transferencia'?null:($('movCat').value||null);
   closeDlg($('movDlg'));
   if(unchanged) return true;
@@ -2533,6 +2630,7 @@ function saveMovDialog(){
   commit('Movimiento guardado',cs=>{
     const cur=S.movements.get(m.id); if(!cur) throw new Error('El movimiento ya no existe');
     const n={...clone(cur),...fields,kind:movKind,categoryId};
+    if(cur.extra&&!n.extra) n.notExtra=true; else if(n.extra) n.notExtra=false;
     if(!imported){ n.accountId=accountId; n.date=date; n.amountCents=(movKind==='gasto'||(movKind==='transferencia'&&cur.amountCents<0))?-abs:abs; }
     if(movKind==='transferencia'&&!n.transferPairId){
       n.transferAccountId=other;
@@ -2573,7 +2671,7 @@ function suggestRuleText(m){
   base=base.replace(/^(ADEUDO DE|ADEUDO|RECIBO|PAGO EN|PAGO CON TARJETA EN|COMPRA EN|COMPRA ING|COMPRA)\s+/,'');
   return base.split(' ').filter(w=>w&&!/\d/.test(w)&&w.length>1).slice(0,3).join(' ');
 }
-function movFormValues(){ return [movKind,$('movAcc').value,$('movDate').value,$('movAmount').value,$('movOther').value,$('movCat').value,$('movPayee').value,$('movConcept').value,JSON.stringify(movTags),$('movReviewed').checked,$('movNotes').value]; }
+function movFormValues(){ return [movKind,$('movAcc').value,$('movDate').value,$('movAmount').value,$('movOther').value,$('movCat').value,$('movPayee').value,$('movConcept').value,JSON.stringify(movTags),$('movReviewed').checked,$('movExtra').checked,$('movNotes').value]; }
 let movFormSnap='';
 $('movRule').addEventListener('click',()=>{
   const m=movEditing; if(!m) return;
@@ -3264,7 +3362,7 @@ async function confirmImport(fi){
       if(c.ruleId) hits.set(c.ruleId,(hits.get(c.ruleId)||0)+1);
       if(x.manual&&!rv.keepManual.has(x.i)&&S.movements.has(x.manual.id)){
         const mm=S.movements.get(x.manual.id); replaced.push(clone(mm));
-        m.notes=mm.notes; m.reviewed=mm.reviewed; if(mm.concept) m.concept=mm.concept; if(mm.valueDate&&!m.valueDate) m.valueDate=mm.valueDate; if(mm.exportId){ m.exportId=mm.exportId; if(m.categoryId!==mm.categoryId||m.payee!==mm.payee) m.changedAfterExport=true; }
+        m.notes=mm.notes; m.reviewed=mm.reviewed; m.extra=mm.extra; m.notExtra=mm.notExtra; if(mm.concept) m.concept=mm.concept; if(mm.valueDate&&!m.valueDate) m.valueDate=mm.valueDate; if(mm.exportId){ m.exportId=mm.exportId; if(m.categoryId!==mm.categoryId||m.payee!==mm.payee) m.changedAfterExport=true; }
         cs.del('movements',mm.id);
       }
       if(isT&&m.transferAccountId){
@@ -3740,6 +3838,14 @@ function renderHelp(){
   <li>Estado de cada presupuesto: <b>Bien</b>, <b>En riesgo</b> (más del 90 % gastado o, al ritmo actual, se superará a fin de mes) o <b>Superado</b>.</li>
   <li>Las flechas de <b>Mes</b> permiten ver meses anteriores. Todo se puede deshacer con <kbd>Ctrl</kbd>+<kbd>Z</kbd>.</li></ol>
 
+  <h2>Gastos extraordinarios</h2>
+  <p>Un gasto puntual muy grande (una amortización, un pago a Hacienda, una compra única) dispara la media y deja los presupuestos inflados. Si lo marcas como <b>extraordinario</b>, no cuenta en los presupuestos: ni en lo gastado del mes, ni en la media de 12 meses, ni en «Proponer presupuestos». Sigue contando en Resumen, Estadísticas y Balance.</p>
+  <ol><li><b>Detección automática:</b> la app busca en los últimos 24 meses los gastos que por sí solos superan 250 €, el triple del mes habitual de su categoría (la mediana) y su variación normal. Los que se repiten cada año con el mismo beneficiario o concepto (por ejemplo, un seguro anual) no se proponen.</li>
+  <li>Cuando hay posibles extraordinarios aparece un aviso en <span class="path">Presupuestos</span> y en <span class="path">Presupuestos → Proponer presupuestos</span>. Pulsa <b>Revisar</b>: deja marcados los que lo son y pulsa <b>Guardar</b>. Los que desmarques no se vuelven a proponer.</li>
+  <li><b>A mano:</b> abre el movimiento y marca <b>Extraordinario (fuera de presupuestos)</b>. También sirve para un ingreso puntual, que así no sube el «Ingreso medio». Para varios a la vez, selecciónalos en <span class="path">Movimientos</span> y pulsa <b>Extraordinarios</b> (o <b>No extraordinarios</b> para quitarlo).</li>
+  <li>Para verlos: <span class="path">Movimientos → Estado → Extraordinarios</span> (o <b>Posibles extraordinarios</b>). Llevan el icono del rayo. En la tarjeta <b>Total del mes</b> aparece lo gastado como extraordinario ese mes, con enlace a esos movimientos.</li>
+  <li>La marca no se exporta a Bluecoins ni cambia nada allí.</li></ol>
+
   <h2>Carpeta de importación</h2>
   <ol><li>Crea una carpeta solo para las descargas del banco, por ejemplo <span class="path">Documentos\\Bancos\\Entrada</span>. No uses la carpeta Descargas entera.</li>
   <li>En <span class="path">Importar → Elegir carpeta de importación</span>, elige esa carpeta y confirma. Chrome pregunta si la app puede ver los archivos: acepta. Si al volver a abrir la app ofrece <b>Permitir en cada visita</b>, elige esa opción para que no vuelva a preguntar.</li>
@@ -3827,6 +3933,7 @@ document.addEventListener('click',async e=>{
           const nm={...clone(m),labels:nl}; if(nm.exportId) nm.changedAfterExport=true; cs.put('movements',nm); n++; }
           return n?(add?`Etiquetas añadidas a ${n} movimientos`:`Etiquetas quitadas de ${n} movimientos`):false; }).then(ok=>{ if(ok){ bulkTags=[]; renderMovs(); } else showToast('No había nada que cambiar'); });
         return; }
+      case 'bulk-extra': case 'bulk-noextra': setExtra([...selMov],a==='bulk-extra').then(ok=>{ if(!ok) showToast('No había nada que cambiar'); }); return;
       case 'bulk-rev': commit('',cs=>{ let n=0; for(const id of selMov){ const m=S.movements.get(id); if(m&&!m.reviewed){ cs.put('movements',{...clone(m),reviewed:true}); n++; } } return n?`${n} marcados como revisados`:false; }); return;
       case 'bulk-del': {
         const ids=[...selMov], exp=ids.filter(id=>S.movements.get(id)?.exportId).length;
@@ -3870,6 +3977,8 @@ document.addEventListener('click',async e=>{
       case 'bud-new': openBudgetDialog(null,act.dataset.cat||''); return;
       case 'bud-edit': openBudgetDialog(act.dataset.id); return;
       case 'bud-propose': openProposeDialog(); return;
+      case 'extra-review': openExtraDialog(); return;
+      case 'extra-movs': { const y=act.dataset.ym; Object.assign(ui.mf,{acc:'',from:y+'-01',to:ymEnd(y),cat:'',label:'',state:'extra',q:'',page:0}); saveUI(); go('movimientos'); return; }
       case 'bud-prev': case 'bud-next': ui.bud.ym=ymAdd(ui.bud.ym||ymOf(todayYMD()),a==='bud-prev'?-1:1); saveUI(); renderBudgets(); return;
       case 'bud-today': ui.bud.ym=''; saveUI(); renderBudgets(); return;
       case 'new-parent': newParentCat(); return;
@@ -3973,7 +4082,7 @@ window.__fin={S,ui,parseAmount,centsToPlain,centsToComma,parseDateCell,excelSeri
   normText,fingerprint,normMovement,normAccount,normCategory,parseCatLines,balancesAt,balanceAt,flowsBetween,causesFor,
   bluecoinsCsv,movementsToBluecoinsRows,BC_HEADER,commit,undo,backupData,go,ready:()=>!!db,
   readBiff,readCfbStream,rkValue,IMPORTERS,analyzeFile,chainCheck,findHeader,hdrNorm,guessAccount,classifyRow,buildReview,confirmImport,undoImport,
-  ruleMatches,matchRule,predictMovement,learnFromConcept,dupCandidates,isDup,cardInfo,availableAt,flows,totals,scopeIds,periodRange,insightsFor,budgets,budgetSpent,statsOf,balanceHist,openScopeDialog,applyRulesToFree,bcPlan,confirmBcImport,catLabel,findCounterpart,suggestRuleText,normRule,imp,splitLabels,normLabels,mergeLabels,allLabels};
+  ruleMatches,matchRule,predictMovement,learnFromConcept,dupCandidates,isDup,cardInfo,availableAt,flows,totals,scopeIds,periodRange,insightsFor,budgets,budgetSpent,statsOf,budFlows,extraSuggestions,setExtra,balanceHist,openScopeDialog,applyRulesToFree,bcPlan,confirmBcImport,catLabel,findCounterpart,suggestRuleText,normRule,imp,splitLabels,normLabels,mergeLabels,allLabels};
 </script>
 </body>
 </html>
