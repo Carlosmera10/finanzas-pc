@@ -135,23 +135,25 @@ bbva_cuenta("bbva-cuenta-septiembre.xlsx", SEP, 5000.00)
 bbva_cuenta("bbva-cuenta-octubre.xlsx", OCT, 5000.00 - 30.00 + 15.00)
 
 
-def bbva_tarjeta():
+TARJETA_FILAS = [
+    ("26/09/2026", "Mercadona c. ma", -12.40),
+    ("20/09/2026", "Cafeteria plaza", -1.80),
+    ("20/09/2026", "Cafeteria plaza", -1.80),  # dos cafés iguales el mismo día
+    ("05/09/2026", "Recibo mes anterior", 55.30),
+    ("28/08/2026", "Lidl ejemplo", -55.30),
+]
+
+
+def bbva_tarjeta(nombre="bbva-tarjeta.xlsx", filas=TARJETA_FILAS):
     wb = Workbook(); ws = wb.active; ws.title = "Informe BBVA"
     ws["D2"] = "Listado de movimientos"
     ws["D3"] = "Fecha de generación del informe: 29/10/2026"
     for col, txt in zip("BCDEF", ["Fecha", "Tarjeta", "Concepto", "Importe", "Divisa"]):
         ws[f"{col}5"] = txt
-    filas = [
-        ("26/09/2026", "Mercadona c. ma", -12.40),
-        ("20/09/2026", "Cafeteria plaza", -1.80),
-        ("20/09/2026", "Cafeteria plaza", -1.80),  # dos cafés iguales el mismo día
-        ("05/09/2026", "Recibo mes anterior", 55.30),
-        ("28/08/2026", "Lidl ejemplo", -55.30),
-    ]
     for i, (f, c, imp) in enumerate(filas):
         for col, v in zip("BCDEF", [f, TARJETA, c, imp, "€"]):
             ws[f"{col}{6 + i}"] = v
-    wb.save(os.path.join(DIR, "bbva-tarjeta.xlsx"))
+    wb.save(os.path.join(DIR, nombre))
 
 
 def ing_xls():
@@ -180,6 +182,8 @@ def ing_xls():
 
 
 bbva_tarjeta()
+# Descarga posterior en la que uno de los dos cafés ya no aparece (cargo anulado)
+bbva_tarjeta("bbva-tarjeta-anulado.xlsx", TARJETA_FILAS[:2] + TARJETA_FILAS[3:])
 ing_xls()
 print("Archivos de bancos generados")
 

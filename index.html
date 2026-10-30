@@ -373,6 +373,13 @@ details.vtable .tbl{border:1px solid var(--line);border-radius:10px}
 .meter-st.warn{color:var(--st-warn-ink)}
 .meter-st.crit{color:var(--st-crit-ink)}
 .bud-tbl td.bud-meter{min-width:150px}
+.pred-line{grid-column:1/-1;display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--info);margin-top:-4px}
+.dup-warn{border:1px solid var(--warn-line);background:var(--warn-bg);color:var(--ink);border-radius:9px;padding:9px 12px;font-size:13px}
+.dup-warn .dw-h{display:flex;align-items:center;gap:6px;font-weight:700;color:var(--warn);margin-bottom:4px}
+.dup-warn ul{margin:0;padding-left:20px}
+.rv-missing{margin-top:10px;border:1px solid var(--warn-line);background:var(--warn-bg);border-radius:9px;padding:9px 12px;font-size:13px;display:flex;flex-direction:column;gap:4px}
+.rv-missing .dw-h{display:flex;align-items:center;gap:6px;font-weight:700;color:var(--warn)}
+button.chip{border:0;cursor:pointer;font:inherit;font-size:12px;font-weight:600}
 .card-row{padding:8px 0;border-bottom:1px solid var(--line)}
 .card-row .meter{margin-top:6px}
 .cr-head{display:flex;justify-content:space-between;gap:10px;align-items:baseline}
@@ -534,18 +541,20 @@ dl.kv.avail{margin-top:10px}
     </div>
     <div class="hint-line" id="movLockLine" hidden><svg class="ic xs"><use href="#i-lock"/></svg><span>Importado del banco: cuenta, fecha e importe no se pueden cambiar.</span></div>
     <div class="form-grid">
+      <label class="fld">Beneficiario<input class="inp" type="text" id="movPayee" list="payeeList" autocomplete="off"></label>
+      <label class="fld">Importe (€)<input class="inp amount" type="text" inputmode="decimal" id="movAmount" autocomplete="off" placeholder="0,00"></label>
+      <div class="pred-line full" id="movPred" hidden></div>
       <label class="fld">Cuenta<select class="inp" id="movAcc"></select></label>
       <label class="fld">Fecha<input class="inp" type="date" id="movDate" required></label>
-      <label class="fld">Importe (€)<input class="inp amount" type="text" inputmode="decimal" id="movAmount" autocomplete="off" placeholder="0,00"></label>
       <label class="fld" id="movOtherWrap">Cuenta de destino<select class="inp" id="movOther"></select></label>
       <label class="fld" id="movCatWrap">Categoría<select class="inp" id="movCat"></select></label>
-      <label class="fld">Beneficiario<input class="inp" type="text" id="movPayee" list="payeeList" autocomplete="off"></label>
-      <label class="fld full">Concepto<input class="inp" type="text" id="movConcept" autocomplete="off"></label>
+      <label class="fld" id="movConceptWrap">Concepto<input class="inp" type="text" id="movConcept" autocomplete="off"></label>
       <div class="raw full" id="movRaw" hidden style="grid-column:1/-1"></div>
       <div class="fld">Etiquetas<div id="movLabelsBox"></div></div>
       <div class="fld" style="justify-content:flex-end"><label class="chk"><input type="checkbox" id="movReviewed">Revisado</label></div>
       <label class="fld full">Notas<textarea class="inp" id="movNotes" rows="2"></textarea></label>
     </div>
+    <div class="dup-warn" id="movDup" hidden></div>
     <div class="chips" id="movChips"></div>
   </div>
   <div class="dlg-foot">
@@ -553,7 +562,7 @@ dl.kv.avail{margin-top:10px}
     <button type="button" class="btn sec" id="movRule"><svg class="ic sm"><use href="#i-wand"/></svg>Crear regla</button>
     <span class="sp"></span>
     <button type="button" class="btn sec" data-close>Cancelar</button>
-    <button type="submit" class="btn"><svg class="ic sm"><use href="#i-check"/></svg>Guardar</button>
+    <button type="submit" class="btn" id="movSave"><svg class="ic sm"><use href="#i-check"/></svg><span>Guardar</span></button>
   </div>
 </form></dialog>
 <datalist id="payeeList"></datalist>
@@ -1231,7 +1240,7 @@ function normMovement(m){
     source:['import','manual','bluecoins'].includes(m.source)?m.source:'manual',importId:m.importId?str(m.importId,64):null,
     detail:str(m.detail,500),bankCategory:str(m.bankCategory,160),bankRef:str(m.bankRef,80),bcRef:str(m.bcRef,400),historic:!!m.historic,
     fingerprint:str(m.fingerprint,800),occurrence:isInt(m.occurrence)&&m.occurrence>0?m.occurrence:1,
-    exportId:m.exportId?str(m.exportId,64):null,changedAfterExport:!!m.changedAfterExport,reviewed:!!m.reviewed,
+    exportId:m.exportId?str(m.exportId,64):null,changedAfterExport:!!m.changedAfterExport,reviewed:!!m.reviewed,notDup:!!m.notDup,
     createdAt:str(m.createdAt,40)||nowISO(),updatedAt:str(m.updatedAt,40)};
 }
 function normCategory(c){
@@ -1426,7 +1435,11 @@ function flowsBetween(from,to){
   return {inc,exp,save:inc-exp,rate:inc>0?(inc-exp)/inc:null};
 }
 const dupKeys=()=>cached('dups',()=>{ const cnt=new Map(); for(const m of S.movements.values()){ const k=m.accountId+'|'+m.date+'|'+m.amountCents+'|'+normText(movConcept(m)); cnt.set(k,(cnt.get(k)||0)+1); } return new Set([...cnt].filter(([,n])=>n>1).map(([k])=>k)); });
-const isDup=m=>dupKeys().has(m.accountId+'|'+m.date+'|'+m.amountCents+'|'+normText(movConcept(m)));
+/* También: un movimiento apuntado a mano con su gemelo importado del banco (mismo importe, misma familia de cuentas, ±5 días) */
+const manualTwins=()=>cached('twins',()=>{ const out=new Set(); for(const m of S.movements.values()){ if(m.source!=='manual'||m.kind==='transferencia'||m.notDup) continue;
+  const t=dupCandidates({id:m.id,accountId:m.accountId,date:m.date,amountCents:m.amountCents},5).find(x=>x.source==='import'&&!x.notDup); if(t){ out.add(m.id); out.add(t.id); } } return out; });
+const dupKey=m=>m.accountId+'|'+m.date+'|'+m.amountCents+'|'+normText(movConcept(m));
+const isDup=m=>!m.notDup&&dupKeys().has(m.accountId+'|'+m.date+'|'+m.amountCents+'|'+normText(movConcept(m)))||manualTwins().has(m.id);
 const lastImportByAcc=()=>cached('lastImp',()=>{ const out=new Map(); for(const i of S.imports.values()){ if(!i.accountId) continue; const p=out.get(i.accountId); if(!p||(i.at||'')>(p.at||'')) out.set(i.accountId,i); } return out; });
 function lastCheck(accId){ let best=null; for(const c of S.checks.values()) if(c.accountId===accId&&(!best||c.date>best.date||(c.date===best.date&&c.createdAt>best.createdAt))) best=c; return best; }
 function checkLive(c){ const app=balanceAt(c.accountId,c.date); return {app,diff:app-c.realCents,bcDiff:c.bluecoinsCents==null?null:c.bluecoinsCents-c.realCents}; }
@@ -1871,6 +1884,8 @@ function insightsFor(ids){
     if(used>=c.limitCents) out.push({sev:'crit',text:`${c.name}: ${money(used)} pendiente de cargar, por encima del límite de ${money(c.limitCents)}.`,view:'resumen'});
     else if(used>=c.limitCents*0.8) out.push({sev:'warn',text:`${c.name}: ${money(used)} de ${money(c.limitCents)} de límite (${NF_PCT0.format(used/c.limitCents)}).`,view:'resumen'}); }
   /* 6. Pendientes de revisar o de pasar a Bluecoins, controles y descuadres */
+  const dups=[...S.movements.values()].filter(m=>ids.has(m.accountId)&&m.date>=addDays(today,-90)&&isDup(m)).length;
+  if(dups) out.push({sev:'warn',text:`${dups} movimientos de los últimos 90 días son posibles duplicados.`,view:'movimientos',state:'dups'});
   const noCat=all.filter(x=>!x.cat&&x.d>=addDays(today,-90)).length; if(noCat) out.push({sev:'info',text:`${noCat} movimientos de los últimos 90 días sin categoría.`,view:'movimientos',state:'sincat'});
   const bad=accSorted().filter(a=>ids.has(a.id)&&lastCheck(a.id)&&checkLive(lastCheck(a.id)).diff!==0); if(bad.length) out.push({sev:'crit',text:`Saldo descuadrado en ${bad.map(a=>a.name).join(', ')}.`,view:'controles'});
   const li=lastImportByAcc(); for(const a of accSorted()){ const l=li.get(a.id); if(ids.has(a.id)&&l&&daysBetween(ymd(new Date(l.at)),today)>35) out.push({sev:'info',text:`${a.name}: hace ${daysBetween(ymd(new Date(l.at)),today)} días de la última importación.`,view:'importar'}); }
@@ -2320,6 +2335,72 @@ function exportFilterCsv(){
   download('﻿'+lines.join('\r\n')+'\r\n',`movimientos-${stamp()}.csv`,'text/csv;charset=utf-8');
 }
 
+/* ----- Predicción al escribir un movimiento: lo más frecuente para ese beneficiario o concepto ----- */
+/* Lo más frecuente, dando más peso a lo reciente: cada 3 meses de antigüedad, un movimiento pesa la mitad */
+function topBy(list,keyFn){ const today=todayYMD(), c=new Map(); for(const m of list){ const k=keyFn(m); if(k==null||k==='') continue; const w=Math.pow(0.5,Math.max(0,daysBetween(m.date,today))/90); c.set(k,(c.get(k)||0)+w); }
+  const best=[...c].sort((a,b)=>b[1]-a[1])[0]; return best?best[0]:null; }
+/* Cuenta «efectiva» de un movimiento: una compra apuntada en Bluecoins en la cuenta del banco con la etiqueta de una tarjeta es de esa tarjeta */
+function effAccount(m){ const a=S.accounts.get(m.accountId); if(!a) return null;
+  if(!isMonthlyCard(a)&&m.labels.length){ const c=linkedCards(a.id).find(c=>!c.archived&&c.autoLabels.length&&c.autoLabels.every(l=>m.labels.includes(l))); if(c) return c.id; }
+  return a.archived?null:a.id; }
+function predictMovement(text){
+  const q=normText(text); if(q.length<2) return null;
+  return cached('pred|'+q,()=>{
+    const all=[...S.movements.values()].filter(m=>m.kind==='gasto'||m.kind==='ingreso');
+    let pool=all.filter(m=>normText(m.payee)===q), by='exact';
+    if(!pool.length&&q.length>=3){ pool=all.filter(m=>normText(m.payee).startsWith(q)||normText(movConcept(m)).includes(q)||normText(m.rawConcept).includes(q)); by='texto'; }
+    if(!pool.length){
+      const r=matchRule({rawConcept:text,concept:text,detail:'',bankCategory:'',amountCents:-1,accountId:''})||matchRule({rawConcept:text,concept:text,detail:'',bankCategory:'',amountCents:1,accountId:''});
+      if(!r) return null;
+      const m={kind:'gasto',categoryId:null,payee:'',labels:[]}; applyRuleSet(m,r);
+      return {n:0,by:'regla',rule:r.text,kind:m.kind,categoryId:m.categoryId,accountId:r.accountId||null,labels:m.labels,payee:m.payee};
+    }
+    const kind=topBy(pool,m=>m.kind), same=pool.filter(m=>m.kind===kind);
+    const accountId=topBy(same,effAccount);
+    const lab=topBy(same.filter(m=>effAccount(m)===accountId),m=>JSON.stringify(m.labels));
+    return {n:pool.length,by,kind,categoryId:topBy(same,m=>m.categoryId),accountId,labels:lab?JSON.parse(lab):[],payee:by==='exact'?topBy(pool,m=>m.payee):''};
+  });
+}
+let movTouched=new Set(), movAutoTags=null, movPredFor='';
+function applyPrediction(force=false){
+  if(movEditing&&movEditing.source!=='manual') return;
+  const text=$('movPayee').value.trim()||$('movConcept').value.trim(), key=normText(text);
+  if(!force&&key===movPredFor) return; movPredFor=key;
+  const pr=predictMovement(text), line=$('movPred');
+  if(!pr){ line.hidden=true; return; }
+  const filled=[];
+  const isNew=!movEditing;
+  if(isNew&&!movTouched.has('kind')&&pr.kind&&pr.kind!==movKind&&!(movEditing&&movEditing.transferPairId)){ movKind=pr.kind; syncMovKind(); filled.push(pr.kind==='gasto'?'gasto':'ingreso'); }
+  if(isNew&&!movTouched.has('acc')&&pr.accountId&&pr.accountId!==$('movAcc').value&&S.accounts.has(pr.accountId)){
+    $('movAcc').value=pr.accountId; movPrevAcc=pr.accountId; syncMovKind(); filled.push('cuenta'); }
+  if(!movTouched.has('cat')&&pr.categoryId&&S.categories.get(pr.categoryId)?.kind===movKind&&(isNew||!$('movCat').value)){ $('movCat').value=pr.categoryId; filled.push('categoría'); }
+  const tagsTouched=movAutoTags!==null&&JSON.stringify(movTags)!==JSON.stringify(movAutoTags);
+  if(isNew&&!tagsTouched){ const auto=S.accounts.get($('movAcc').value)?.autoLabels||[]; movTags=mergeLabels(pr.labels,auto); movAutoTags=[...movTags]; $('movLabelsBox').innerHTML=tagEditorHtml('mov',movTags); if(movTags.length) filled.push('etiquetas'); }
+  if(pr.payee&&$('movPayee').value.trim()&&pr.payee!==$('movPayee').value) $('movPayee').value=pr.payee;
+  line.hidden=!filled.length;
+  line.innerHTML=filled.length?`${icon('wand','ic xs')}<span>${esc(filled.join(', ').replace(/^./,c=>c.toUpperCase()))} ${pr.by==='regla'?`según la regla «${esc(pr.rule)}»`:`como en ${NF_INT.format(pr.n)} ${pr.n===1?'movimiento anterior':'movimientos anteriores'}`}</span>`:'';
+  checkMovDup();
+}
+/* Cuentas que se miran juntas al buscar duplicados: la cuenta, la cuenta donde se carga su tarjeta y sus tarjetas */
+function accFamily(accId){ const a=S.accounts.get(accId); if(!a) return new Set([accId]); const host=isMonthlyCard(a)?a.linkedAccountId:accId; const f=new Set([accId]); if(host){ f.add(host); for(const c of linkedCards(host)) f.add(c.id); } return f; }
+/* Posibles duplicados de un movimiento: mismo importe, cuentas de la misma familia y como mucho 3 días de diferencia */
+function dupCandidates({id=null,pairId=null,accountId,date,amountCents},days=3){
+  if(!accountId||!validYMD(date)||!amountCents) return [];
+  const fam=accFamily(accountId);
+  return [...S.movements.values()].filter(m=>m.id!==id&&(!pairId||m.transferPairId!==pairId)&&fam.has(m.accountId)&&m.amountCents===amountCents&&Math.abs(daysBetween(m.date,date))<=days).sort((a,b)=>Math.abs(daysBetween(a.date,date))-Math.abs(daysBetween(b.date,date)));
+}
+function checkMovDup(){
+  const m=movEditing, box=$('movDup'), btn=$('movSave').querySelector('span');
+  const imported=!!m&&m.source!=='manual'; let list=[];
+  if(!imported){
+    const abs=parseAmount($('movAmount').value);
+    if(abs){ const a=Math.abs(abs), sign=movKind==='ingreso'?1:-1; list=dupCandidates({id:m&&m.id,pairId:m&&m.transferPairId,accountId:$('movAcc').value,date:$('movDate').value,amountCents:sign*a});
+      if(movKind==='transferencia'&&$('movOther').value) list=list.concat(dupCandidates({id:m&&m.id,pairId:m&&m.transferPairId,accountId:$('movOther').value,date:$('movDate').value,amountCents:a})); }
+  }
+  box.hidden=!list.length; btn.textContent=list.length?'Guardar igualmente':'Guardar';
+  if(list.length) box.innerHTML=`<div class="dw-h">${icon('alert','ic xs')}Posible duplicado</div><ul>${list.slice(0,4).map(x=>`<li>${fmtDate(x.date)} · ${esc(accName(x.accountId))} · ${esc(x.payee||movConcept(x)||'—')} · <b>${money(x.amountCents)}</b> <span class="faint">(${x.source==='manual'?'manual':x.source==='bluecoins'?'histórico':'importado'})</span></li>`).join('')}</ul>`;
+}
+
 /* ----- Diálogo de movimiento ----- */
 let movEditing=null, movKind='gasto';
 function openMovDialog(id){
@@ -2352,17 +2433,35 @@ function openMovDialog(id){
     if(m.changedAfterExport) chips.push(`<span class="chip warn">${icon('alert','ic xs')}Cambiado tras exportar</span>`);
     if(isInt(m.bankBalanceCents)) chips.push(`<span class="chip">Saldo del banco: ${money(m.bankBalanceCents)}</span>`);
     if(m.bankCategory) chips.push(`<span class="chip">${esc(m.bankCategory)}</span>`);
-    if(m.valueDate&&m.valueDate!==m.date) chips.push(`<span class="chip">Fecha valor: ${fmtDate(m.valueDate)}</span>`); }
+    if(m.valueDate&&m.valueDate!==m.date) chips.push(`<span class="chip">Fecha valor: ${fmtDate(m.valueDate)}</span>`);
+    if(isDup(m)) chips.push(`<span class="chip warn">${icon('alert','ic xs')}Posible duplicado</span><button type="button" class="btn ghost sm" id="movNotDup">No es duplicado</button>`); }
   $('movChips').innerHTML=chips.join('');
   $('movDelete').hidden=!m; $('movRule').hidden=!m||m.kind==='transferencia'&&!!m.transferPairId&&m.source==='manual';
   $('movCat').innerHTML=''; $('movOther').innerHTML='';
   payeeDatalist();
   syncMovKind(m);
   movFormSnap=JSON.stringify(movFormValues()); movPrevAcc=$('movAcc').value;
+  movTouched=new Set(m?['kind','acc']:[]); movAutoTags=m?null:[...movTags]; movPredFor=normText(m?(m.payee||movConcept(m)):''); $('movPred').hidden=true;
+  checkMovDup();
   openDlg($('movDlg'));
-  (imported?$('movCat'):$('movAmount')).focus();
+  (imported?$('movCat'):m?$('movAmount'):$('movPayee')).focus();
 }
-function payeeDatalist(){ const set=new Set(); for(const m of S.movements.values()) if(m.payee) set.add(m.payee); $('payeeList').innerHTML=[...set].sort((a,b)=>a.localeCompare(b,'es')).slice(0,2000).map(p=>`<option value="${esc(p)}">`).join(''); }
+/* Beneficiarios ordenados por uso (los más frecuentes primero en las sugerencias) */
+function payeeDatalist(){ const c=new Map(); for(const m of S.movements.values()) if(m.payee) c.set(m.payee,(c.get(m.payee)||0)+1); $('payeeList').innerHTML=[...c].sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0],'es')).slice(0,2000).map(([p])=>`<option value="${esc(p)}">`).join(''); }
+$('movPayee').addEventListener('input',()=>{ const v=normText($('movPayee').value); if(v&&[...S.movements.values()].some(m=>normText(m.payee)===v)) applyPrediction(); });
+$('movPayee').addEventListener('change',()=>applyPrediction());
+$('movConcept').addEventListener('change',()=>{ if(!$('movPayee').value.trim()) applyPrediction(); });
+$('movCat').addEventListener('change',()=>movTouched.add('cat'));
+/* «No es duplicado»: se marca el movimiento y sus gemelos para que no vuelvan a avisar */
+$('movChips').addEventListener('click',e=>{
+  if(!e.target.closest('#movNotDup')||!movEditing) return;
+  const m=S.movements.get(movEditing.id); if(!m) return;
+  const k=dupKey(m), twins=[...S.movements.values()].filter(x=>x.id===m.id||dupKey(x)===k||(manualTwins().has(m.id)&&manualTwins().has(x.id)&&dupCandidates({id:m.id,accountId:m.accountId,date:m.date,amountCents:m.amountCents},5).some(y=>y.id===x.id)));
+  closeDlg($('movDlg'));
+  commit('Marcado como no duplicado',cs=>{ for(const x of twins) cs.put('movements',{...clone(x),notDup:true}); });
+});
+for(const id of ['movAmount','movDate','movOther']) $(id).addEventListener('input',checkMovDup);
+$('movOther').addEventListener('change',checkMovDup);
 function syncMovKind(m=movEditing){
   for(const b of $('movKind').querySelectorAll('button')) b.setAttribute('aria-pressed',String(b.dataset.kind===movKind));
   const isT=movKind==='transferencia';
@@ -2378,12 +2477,12 @@ function syncMovKind(m=movEditing){
   const sel=$('movCat').value||(m&&m.categoryId)||'';
   $('movCat').innerHTML=`<option value="">Sin categoría</option>`+catOptionsHtml(movKind==='transferencia'?null:movKind,sel);
 }
-$('movKind').addEventListener('click',e=>{ const b=e.target.closest('button[data-kind]'); if(!b||b.disabled) return; movKind=b.dataset.kind; syncMovKind(); });
+$('movKind').addEventListener('click',e=>{ const b=e.target.closest('button[data-kind]'); if(!b||b.disabled) return; movKind=b.dataset.kind; movTouched.add('kind'); syncMovKind(); checkMovDup(); });
 $('movAcc').addEventListener('change',()=>{
   /* Movimiento nuevo: las etiquetas automáticas siguen a la cuenta elegida */
   if(!movEditing){ const prev=movPrevAcc&&S.accounts.get(movPrevAcc)?.autoLabels||[], next=S.accounts.get($('movAcc').value)?.autoLabels||[];
     movTags=mergeLabels(movTags.filter(l=>!prev.includes(l)),next); $('movLabelsBox').innerHTML=tagEditorHtml('mov',movTags); }
-  movPrevAcc=$('movAcc').value; syncMovKind();
+  movPrevAcc=$('movAcc').value; movTouched.add('acc'); if(movAutoTags) movAutoTags=[...movTags]; syncMovKind(); checkMovDup();
 });
 let movPrevAcc=null;
 $('movForm').addEventListener('submit',e=>{ e.preventDefault(); saveMovDialog(); });
@@ -2990,8 +3089,34 @@ function buildReview(fi){
       if(e){ Object.assign(cls,e); if(e.kind&&e.kind!=='transferencia'){ cls.transferAccountId=null; cls.pairWith=null; cls.settlement=false; } if(e.kind) cls.note=''; }
       if(rv.allLabels&&rv.allLabels.length&&!cls.settlement) cls.labels=mergeLabels(cls.labels,rv.allLabels);
     }
-    return {i,r,fp,occ,dup,cls};
+    return {i,r,fp,occ,dup,cls,manual:null};
   });
+  /* Movimientos apuntados a mano que ahora llegan del banco: el del banco los sustituye y se queda con su categoría, beneficiario, etiquetas y notas */
+  if(accId){
+    if(!rv.keepManual) rv.keepManual=new Set();
+    const fam=accFamily(accId), used=new Set();
+    const manuals=[...S.movements.values()].filter(m=>m.source==='manual'&&m.kind!=='transferencia'&&fam.has(m.accountId));
+    for(const x of rv.rows){
+      if(x.dup||!x.cls||x.cls.kind==='transferencia') continue;
+      const c=manuals.filter(m=>!used.has(m.id)&&m.amountCents===x.r.amountCents&&Math.abs(daysBetween(m.date,x.r.date))<=5).sort((a,b)=>Math.abs(daysBetween(a.date,x.r.date))-Math.abs(daysBetween(b.date,x.r.date)))[0];
+      if(!c) continue;
+      used.add(c.id); x.manual=c;
+      if(!rv.keepManual.has(x.i)){
+        const e=rv.edits.get(x.i)||{};
+        Object.assign(x.cls,{kind:e.kind||c.kind,categoryId:'categoryId' in e?e.categoryId:(c.categoryId||x.cls.categoryId),payee:'payee' in e?e.payee:(c.payee||x.cls.payee),labels:'labels' in e?e.labels:mergeLabels(x.cls.labels,c.labels)});
+        x.cls.note=`Sustituye al apuntado a mano el ${fmtDate(c.date)}`;
+      }
+    }
+  }
+  rv.manualCount=rv.rows.filter(x=>x.manual&&!rv.keepManual?.has(x.i)).length;
+  /* Movimientos importados antes que ya no aparecen en este archivo, en fechas que el archivo cubre: probablemente un cargo anulado */
+  rv.missing=[];
+  if(accId&&an.to>an.from){
+    if(!rv.dropMissing) rv.dropMissing=new Set();
+    const inFile=new Map(); for(const x of rv.rows) inFile.set(x.fp,(inFile.get(x.fp)||0)+1);
+    rv.missing=[...S.movements.values()].filter(m=>m.accountId===accId&&m.source==='import'&&m.fingerprint&&!m.transferPairId&&m.date>an.from&&m.date<an.to&&m.occurrence>(inFile.get(m.fingerprint)||0)).sort((a,b)=>a.date<b.date?-1:1);
+    if(rv.missingInit!==accId){ rv.missingInit=accId; rv.dropMissing=new Set(rv.missing.map(m=>m.id)); }
+  }
   rv.newCount=rv.rows.filter(x=>!x.dup).length; rv.dupCount=rv.rows.length-rv.newCount;
   const w=[...an.warnings];
   if(an.chain&&an.chain.breaks.length) w.push(`El saldo del archivo no encadena en ${an.chain.breaks.length} ${an.chain.breaks.length===1?'punto':'puntos'} (primera vez en la fila ${an.rows[an.chain.breaks[0]].line} del archivo): puede faltar o sobrar algún movimiento.`);
@@ -3036,7 +3161,9 @@ function reviewHtml(fi){
     const third=c.kind==='transferencia'
       ?`<select class="inp" data-rv="transferAccountId" data-i="${x.i}"><option value="">Otra cuenta…</option>${accOptionsHtml(c.transferAccountId,{all:true,exclude:rv.accountId})}</select>`
       :`<select class="inp" data-rv="categoryId" data-i="${x.i}"><option value="">Sin categoría</option>${catOptionsHtml(c.kind,c.categoryId)}</select>`;
-    return `<tr><td><span class="chip ok">Nuevo</span></td>${head}
+    const tag=x.manual?(rv.keepManual.has(x.i)?`<button type="button" class="chip warn" data-act="rv-keep" data-i="${x.i}" title="Se mantendrá también el apuntado a mano el ${fmtDate(x.manual.date)}. Pulsa para sustituirlo.">Duplicado</button>`
+      :`<button type="button" class="chip info" data-act="rv-keep" data-i="${x.i}" title="Sustituye al apuntado a mano el ${fmtDate(x.manual.date)} («${esc(x.manual.payee||movConcept(x.manual))}»). Pulsa para mantener los dos.">Sustituye</button>`):'<span class="chip ok">Nuevo</span>';
+    return `<tr><td>${tag}</td>${head}
       <td class="c-kind"><select class="inp" data-rv="kind" data-i="${x.i}">${kindOpts(c.kind)}</select></td><td class="c-cat">${third}</td>
       <td class="c-payee"><input class="inp" type="text" data-rv="payee" data-i="${x.i}" value="${esc(c.payee)}" list="payeeList" autocomplete="off"></td>
       <td class="c-tags">${tagEditorHtml('rv-'+x.i,c.labels,'+ etiqueta')}</td></tr>`;
@@ -3047,16 +3174,18 @@ function reviewHtml(fi){
       <label class="fld rv-acc">Cuenta<select class="inp" id="rvAcc"><option value="">Elige la cuenta…</option>${comp.length?`<optgroup label="${esc(BANKS[im.bank])}">${opt(comp)}</optgroup>`:''}${other.length?`<optgroup label="Otras">${opt(other)}</optgroup>`:''}</select></label>
       <button class="btn sec sm" data-act="rv-new-acc">${icon('plus')}Nueva cuenta</button>
       <div><div class="k">Periodo</div>${fmtDate(an.from)} – ${fmtDate(an.to)}</div>
-      <div><div class="k">Movimientos</div>${NF_INT.format(an.rows.length)}${rv.accountId?` · <b>${NF_INT.format(rv.newCount)} nuevos</b> · ${NF_INT.format(rv.dupCount)} ya estaban`:''}</div>
+      <div><div class="k">Movimientos</div>${NF_INT.format(an.rows.length)}${rv.accountId?` · <b>${NF_INT.format(rv.newCount)} nuevos</b> · ${NF_INT.format(rv.dupCount)} ya estaban${rv.manualCount?` · ${NF_INT.format(rv.manualCount)} sustituyen a apuntados a mano`:''}`:''}</div>
       ${an.chain?`<div><div class="k">Saldo final</div>${money(an.chain.closing)} · ${fmtDate(an.chain.closingDate)}</div>`:''}
     </div>
     ${rv.openingOffer||rv.hintOffer?`<div class="rv-opts">
       ${rv.openingOffer?`<label class="chk"><input type="checkbox" id="rvOpening"${rv.setOpening?' checked':''}>Saldo de apertura de la cuenta: <b>${money(rv.openingOffer.cents)}</b> antes de los movimientos del ${fmtDate(rv.openingOffer.date)}</label>`:''}
       ${rv.hintOffer?`<label class="chk"><input type="checkbox" id="rvHint"${rv.addHint?' checked':''}>Reconocer esta cuenta por los dígitos ··${esc(rv.hintOffer)}</label>`:''}</div>`:''}
     ${rv.accountId&&rv.newCount?`<div class="rv-all"><span class="k">Etiquetas para todos los nuevos</span>${tagEditorHtml('rv-all',rv.allLabels||[],'Añadir etiqueta')}</div>`:''}
+    ${rv.missing&&rv.missing.length?`<div class="rv-missing"><div class="dw-h">${icon('alert','ic xs')}${rv.missing.length===1?'Ya no aparece en este archivo (¿cargo anulado?)':`${rv.missing.length} ya no aparecen en este archivo (¿cargos anulados?)`}</div>
+      ${rv.missing.map(m=>`<label class="chk"><input type="checkbox" data-rv-drop="${m.id}"${rv.dropMissing.has(m.id)?' checked':''}>Quitar al confirmar: ${fmtDate(m.date)} · ${esc(m.payee||movConcept(m))} · <b>${money(m.amountCents)}</b>${m.exportId?' <span class="chip warn">ya está en Bluecoins: bórralo también allí</span>':''}</label>`).join('')}</div>`:''}
     ${rv.warnings.length?`<ul class="warns">${rv.warnings.map(x=>`<li>${icon('alert','ic xs')}${esc(x)}</li>`).join('')}</ul>`:''}
     <div class="set-row">
-      ${done&&!rv.newCount?'':`<button class="btn" data-act="rv-confirm"${rv.accountId?'':' disabled'}>${icon('check')}${rv.newCount?`Confirmar importación (${NF_INT.format(rv.newCount)})`:'Marcar como importado'}</button>`}
+      ${done&&!rv.newCount&&!(rv.missing||[]).some(m=>rv.dropMissing.has(m.id))?'':`<button class="btn" data-act="rv-confirm"${rv.accountId?'':' disabled'}>${icon('check')}${rv.newCount?`Confirmar importación (${NF_INT.format(rv.newCount)})`:'Marcar como importado'}</button>`}
       <button class="btn ghost" data-act="rv-raw">${icon('file')}Ver el archivo original</button>
       ${rv.dupCount&&rv.accountId?`<label class="chk"><input type="checkbox" id="rvDups"${rv.showDups?' checked':''}>Ver también los que ya estaban</label>`:''}
       ${done?'<span class="chip ok">Este archivo ya se importó</span>':''}
@@ -3082,7 +3211,8 @@ async function confirmImport(fi){
   if(!acc){ showToast('Elige la cuenta del archivo',{error:true}); return; }
   const news=rv.rows.filter(x=>!x.dup&&x.cls), importId=uid(), now=nowISO(), im=importerOf(an.importerId);
   const ok=await commit('',cs=>{
-    const ids=[], pairChanges=[], hits=new Map();
+    const ids=[], pairChanges=[], hits=new Map(), replaced=[], removed=[];
+    for(const m of rv.missing||[]) if(rv.dropMissing.has(m.id)&&S.movements.has(m.id)){ removed.push(clone(S.movements.get(m.id))); cs.del('movements',m.id); }
     for(const x of news){
       const r=x.r, c=x.cls, isT=c.kind==='transferencia';
       const m={id:uid(),accountId:acc.id,date:r.date,valueDate:r.valueDate||'',amountCents:r.amountCents,rawConcept:r.rawConcept,concept:'',payee:(c.payee||'').trim().slice(0,120),
@@ -3090,6 +3220,11 @@ async function confirmImport(fi){
         transferPairId:null,transferAccountId:isT?(c.transferAccountId||null):null,source:'import',importId,fingerprint:x.fp,occurrence:x.occ,
         detail:r.detail||'',bankCategory:r.bankCategory||'',bankRef:r.bankRef||'',exportId:null,changedAfterExport:false,reviewed:false,createdAt:now};
       if(c.ruleId) hits.set(c.ruleId,(hits.get(c.ruleId)||0)+1);
+      if(x.manual&&!rv.keepManual.has(x.i)&&S.movements.has(x.manual.id)){
+        const mm=S.movements.get(x.manual.id); replaced.push(clone(mm));
+        m.notes=mm.notes; m.reviewed=mm.reviewed; if(mm.exportId){ m.exportId=mm.exportId; if(m.categoryId!==mm.categoryId||m.payee!==mm.payee) m.changedAfterExport=true; }
+        cs.del('movements',mm.id);
+      }
       if(isT&&m.transferAccountId){
         const o=findCounterpart({accountId:acc.id,date:m.date,amountCents:m.amountCents,hay:ruleHay(m),transferAccountId:m.transferAccountId},true);
         if(o){ const pid=uid(); pairChanges.push({id:o.id,before:clone(o)});
@@ -3111,8 +3246,8 @@ async function confirmImport(fi){
       cs.put('checks',{id:checkId,accountId:acc.id,date:an.chain.closingDate,realCents:an.chain.closing,appCents:app,bluecoinsCents:null,diffCents:diff,note:'Automático al importar '+f.name.slice(0,120),createdAt:now});
     }
     cs.put('imports',{id:importId,at:now,fileName:f.name,fileHash:f.hash,importer:an.importerId,bank:im.bank,accountId:acc.id,from:an.from,to:an.to,
-      rows:an.rows.length,added:news.length,duplicates:rv.dupCount,movementIds:ids,pairChanges,checkId,openingBefore,hintAdded,warnings:rv.warnings});
-    const tail=diff==null?'':diff===0?' · el saldo cuadra':` · descuadre de ${money(Math.abs(diff))}`;
+      rows:an.rows.length,added:news.length,duplicates:rv.dupCount,movementIds:ids,pairChanges,checkId,openingBefore,hintAdded,warnings:rv.warnings,replaced,removed});
+    const tail=(diff==null?'':diff===0?' · el saldo cuadra':` · descuadre de ${money(Math.abs(diff))}`)+(replaced.length?` · ${replaced.length} sustituyen a apuntados a mano`:'')+(removed.length?` · ${removed.length} anulados quitados`:'');
     return (news.length?`${news.length} movimientos importados en ${acc.name}`:`Archivo registrado sin movimientos nuevos`)+tail;
   });
   if(!ok) return;
@@ -3142,6 +3277,7 @@ async function undoImport(id){
       cs.del('movements',mid);
     }
     for(const pc of im.pairChanges||[]) if(S.movements.has(pc.id)){ const n=normMovement(pc.before); if(n) cs.put('movements',n); }
+    for(const b of [...(im.replaced||[]),...(im.removed||[])]){ const n=normMovement(b); if(n&&!S.movements.has(n.id)) cs.put('movements',n); }
     if(im.checkId) cs.del('checks',im.checkId);
     const a=S.accounts.get(im.accountId);
     if(a&&(im.openingBefore||im.hintAdded)){ const na=clone(a);
@@ -3660,6 +3796,7 @@ document.addEventListener('click',async e=>{
         return; }
       case 'undo-import': undoImport(act.dataset.id); return;
       case 'bc-confirm': confirmBcImport(imp.sel); return;
+      case 'rv-keep': { const rv=imp.files[imp.sel]?.review; if(rv){ const i=+act.dataset.i; rv.keepManual.has(i)?rv.keepManual.delete(i):rv.keepManual.add(i); renderImport(); } return; }
       case 'new-rule': openRuleDialog(null); return;
       case 'rule-up': e.stopPropagation(); moveRule(act.dataset.id,-1); return;
       case 'rule-down': e.stopPropagation(); moveRule(act.dataset.id,1); return;
@@ -3735,6 +3872,7 @@ document.addEventListener('change',e=>{
     if(t.id==='rvAcc'){ rv.accountId=t.value; rv.edits.clear(); rv.setOpening=null; rv.addHint=null; rv.page=0; renderImport(); return; }
     if(t.id==='rvOpening'){ rv.setOpening=t.checked; return; }
     if(t.id==='rvHint'){ rv.addHint=t.checked; return; }
+    if(t.dataset.rvDrop){ t.checked?rv.dropMissing.add(t.dataset.rvDrop):rv.dropMissing.delete(t.dataset.rvDrop); renderImport(); return; }
     if(t.id==='rvDups'){ rv.showDups=t.checked; rv.page=0; renderImport(); return; }
     if(t.dataset.rv&&t.dataset.rv!=='payee'){ rvEdit(+t.dataset.i,t.dataset.rv,t.value); if(t.dataset.rv==='kind'||t.dataset.rv==='categoryId') renderImport(); return; }
   }
@@ -3781,7 +3919,7 @@ window.__fin={S,ui,parseAmount,centsToPlain,centsToComma,parseDateCell,excelSeri
   normText,fingerprint,normMovement,normAccount,normCategory,parseCatLines,balancesAt,balanceAt,flowsBetween,causesFor,
   bluecoinsCsv,movementsToBluecoinsRows,BC_HEADER,commit,undo,backupData,go,ready:()=>!!db,
   readBiff,readCfbStream,rkValue,IMPORTERS,analyzeFile,chainCheck,findHeader,hdrNorm,guessAccount,classifyRow,buildReview,confirmImport,undoImport,
-  ruleMatches,matchRule,cardInfo,availableAt,flows,totals,scopeIds,periodRange,insightsFor,budgets,budgetSpent,statsOf,balanceHist,openScopeDialog,applyRulesToFree,bcPlan,confirmBcImport,catLabel,findCounterpart,suggestRuleText,normRule,imp,splitLabels,normLabels,mergeLabels,allLabels};
+  ruleMatches,matchRule,predictMovement,dupCandidates,isDup,cardInfo,availableAt,flows,totals,scopeIds,periodRange,insightsFor,budgets,budgetSpent,statsOf,balanceHist,openScopeDialog,applyRulesToFree,bcPlan,confirmBcImport,catLabel,findCounterpart,suggestRuleText,normRule,imp,splitLabels,normLabels,mergeLabels,allLabels};
 </script>
 </body>
 </html>
