@@ -3663,6 +3663,17 @@ function renderHelp(){
   <li><b>Volver a lo predeterminado</b>: en ingresos y gastos se suman las cuentas que tienen marcada la casilla <b>Sus ingresos y gastos cuentan en el resumen y las estadísticas</b> (en <span class="path">Cuentas</span>, al pulsar el lápiz de la cuenta; las hipotecas no la tienen); en saldos, todas.</li></ol>
   <p>Cuando la selección deja fuera una cuenta a la que haces traspasos (por ejemplo, la de ahorro), el resumen del periodo muestra aparte los <b>traspasos con otras cuentas</b>.</p>
 
+  <h2>Apuntar un movimiento a mano</h2>
+  <ol><li>Pulsa <kbd>N</kbd> (o <span class="path">Movimientos → Nuevo movimiento</span>). El cursor empieza en <b>Beneficiario</b>.</li>
+  <li>Escribe el beneficiario o elígelo de la lista (salen primero los que más usas). La app rellena el tipo, la cuenta (por ejemplo, la tarjeta), la categoría y las etiquetas con lo más habitual para ese beneficiario, dando más peso a lo reciente. Debajo indica qué ha rellenado y con cuántos movimientos anteriores. Lo que hayas elegido tú antes no se cambia.</li>
+  <li>Si ya hay un movimiento con el mismo importe en esa cuenta (o en su tarjeta, o en la cuenta donde se carga) con hasta 3 días de diferencia, aparece <b>Posible duplicado</b> con los movimientos parecidos y el botón pasa a <b>Guardar igualmente</b>.</li></ol>
+
+  <h2>Duplicados</h2>
+  <ul><li><b>Al importar</b>: si el banco trae un movimiento que ya habías apuntado a mano (mismo importe, hasta 5 días de diferencia), la fila sale como <b>Sustituye</b>: al confirmar, se queda el del banco con la categoría, el beneficiario, las etiquetas y las notas que pusiste. Pulsa <b>Sustituye</b> si quieres mantener los dos.</li>
+  <li>Si en una descarga nueva ya no aparece un movimiento que se importó antes (por ejemplo, un cargo duplicado que el banco ha anulado), sale en <b>Ya no aparece en este archivo</b>, marcado para <b>Quitar al confirmar</b>.</li>
+  <li>En <span class="path">Movimientos → Estado → Posibles duplicados</span> están los que coinciden en cuenta, fecha, importe y concepto, y los apuntados a mano con su gemelo del banco. Si de verdad son dos, abre uno y pulsa <b>No es duplicado</b>.</li>
+  <li>Todo se puede deshacer con <kbd>Ctrl</kbd>+<kbd>Z</kbd> o con <b>Deshacer importación</b>.</li></ul>
+
   <h2>Tarjetas de BBVA</h2>
   <p>BBVA cobra lo gastado con cada tarjeta en un solo cargo a principios del mes siguiente («Recibo mes anterior»). Por eso:</p>
   <ul><li>El <b>saldo</b> de una tarjeta es lo <b>pendiente de cargar</b>: lo gastado desde el día 1 del mes. Entre el día 1 y el día del recibo incluye también el mes anterior.</li>
@@ -3714,7 +3725,7 @@ function renderHelp(){
   <li><b>Solo en Bluecoins</b> (en fechas que ya cubre el banco): se listan aparte y solo se añaden si marcas la casilla.</li>
   <li>Las cuentas que no existen se crean con su saldo de Bluecoins. Las hipotecas no cuentan en ingresos y gastos (se puede cambiar en la cuenta).</li></ul>
 
-  <h2>Tarjetas de BBVA</h2>
+  <h2>Tarjetas de BBVA y Bluecoins</h2>
   <p>BBVA cobra las compras de la tarjeta una vez al mes («Adeudo mensual de tarjeta» en la cuenta y «Recibo mes anterior» en la tarjeta). Por eso cada tarjeta es una cuenta propia, de tipo <b>Tarjeta de crédito</b>, con <b>Se carga en la cuenta: BBVA</b>: las compras son los gastos reales y el cargo mensual es una transferencia de BBVA a la tarjeta, que no cuenta como gasto.</p>
   <p>Si en Bluecoins apuntas las compras de la tarjeta en la cuenta BBVA, pon <b>BBVA</b> en <b>Nombre en Bluecoins</b> de cada tarjeta: así se exportan a esa cuenta y el cargo mensual no se exporta.</p>
 
