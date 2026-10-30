@@ -2273,7 +2273,8 @@ function renderMovs(){
   setActions(`<button class="btn sec" data-act="export-csv" title="Exportar el filtro a CSV para Excel">${icon('download')}<span class="lbl">CSV para Excel</span></button>
     <button class="btn" data-act="new-mov" title="Nuevo movimiento (N)">${icon('plus')}<span class="lbl">Nuevo movimiento</span></button>`);
   const f=ui.mf, list=filteredMovs();
-  for(const id of [...selMov]) if(!S.movements.has(id)) selMov.delete(id);
+  /* La selección solo incluye movimientos visibles con el filtro: lo que deja de cumplirlo (por ejemplo, tras ponerle categoría con «Sin categoría») se deselecciona */
+  if(selMov.size){ const vis=new Set(list.map(m=>m.id)); for(const id of [...selMov]) if(!vis.has(id)) selMov.delete(id); }
   const pages=Math.max(1,Math.ceil(list.length/PAGE)); if(f.page>=pages) f.page=pages-1;
   const slice=list.slice(f.page*PAGE,(f.page+1)*PAGE);
   let inc=0,exp=0,trf=0; for(const m of list){ if(m.kind==='ingreso') inc+=m.amountCents; else if(m.kind==='gasto') exp+=m.amountCents; else trf+=m.amountCents; }
