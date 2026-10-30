@@ -373,6 +373,12 @@ details.vtable .tbl{border:1px solid var(--line);border-radius:10px}
 .meter-st.warn{color:var(--st-warn-ink)}
 .meter-st.crit{color:var(--st-crit-ink)}
 .bud-tbl td.bud-meter{min-width:150px}
+.card-row{padding:8px 0;border-bottom:1px solid var(--line)}
+.card-row .meter{margin-top:6px}
+.cr-head{display:flex;justify-content:space-between;gap:10px;align-items:baseline}
+.cr-name{font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cr-val{font-size:17px;font-variant-numeric:tabular-nums;white-space:nowrap}
+dl.kv.avail{margin-top:10px}
 .bud-tbl td.bud-meter .meter-st{margin:3px 0 0}
 .insights{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
 .ins{display:flex;align-items:center;gap:10px;padding:7px 10px;border:1px solid var(--line);border-left-width:4px;border-radius:8px;font-size:13.5px}
@@ -561,8 +567,9 @@ details.vtable .tbl{border:1px solid var(--line);border-radius:10px}
       <label class="fld">Banco<select class="inp" id="accBank"></select></label>
       <label class="fld">Tipo<select class="inp" id="accKind"></select></label>
       <label class="fld full" id="accLinkedWrap">Se carga en la cuenta<select class="inp" id="accLinked"></select></label>
-      <label class="fld">Saldo de apertura (€)<input class="inp amount" type="text" inputmode="decimal" id="accOpening" autocomplete="off" placeholder="0,00"></label>
-      <label class="fld">Fecha del saldo de apertura<input class="inp" type="date" id="accOpeningDate"></label>
+      <label class="fld" id="accLimitWrap">Límite de la tarjeta al mes (€)<input class="inp amount" type="text" inputmode="decimal" id="accLimit" autocomplete="off" placeholder="Sin límite"></label>
+      <label class="fld acc-open">Saldo de apertura (€)<input class="inp amount" type="text" inputmode="decimal" id="accOpening" autocomplete="off" placeholder="0,00"></label>
+      <label class="fld acc-open">Fecha del saldo de apertura<input class="inp" type="date" id="accOpeningDate"></label>
       <div class="fld full">Etiquetas automáticas de sus movimientos<div id="accLabelsBox"></div></div>
       <label class="fld full">Identificadores en los archivos del banco<input class="inp" type="text" id="accHints" autocomplete="off" placeholder="1234, ES12…5678"></label>
       <label class="fld">Nombre en Bluecoins<input class="inp" type="text" id="accBcName" maxlength="80" autocomplete="off"></label>
@@ -1211,6 +1218,7 @@ function normAccount(a){
     matchHints:Array.isArray(a.matchHints)?a.matchHints.map(x=>str(x,40).trim()).filter(Boolean).slice(0,10):[],autoLabels:normLabels(a.autoLabels),inStats:a.inStats!==false,
     bluecoins:{name:str(a.bluecoins?.name,80).trim(),type:str(a.bluecoins?.type,40).trim()},
     linkedAccountId:a.linkedAccountId?str(a.linkedAccountId,64):null,archived:!!a.archived,order:Number.isFinite(a.order)?a.order:0,
+    limitCents:isInt(a.limitCents)&&a.limitCents>0?a.limitCents:null,
     createdAt:str(a.createdAt,40)||nowISO(),updatedAt:str(a.updatedAt,40)};
 }
 function normMovement(m){
@@ -1375,13 +1383,33 @@ function catLabel(id){ const c=S.categories.get(id); if(!c) return ''; const p=c
 const movConcept=m=>m.concept||m.rawConcept||'';
 const movSort=(a,b)=>a.date<b.date?1:a.date>b.date?-1:(a.createdAt<b.createdAt?1:a.createdAt>b.createdAt?-1:0);
 const allMovs=()=>cached('allMovs',()=>[...S.movements.values()].sort(movSort));
+/* Tarjetas con cargo mensual (tipo «Tarjeta de crédito», como las de BBVA): lo que se gasta en un mes se carga
+   en la cuenta a principios del mes siguiente («Recibo mes anterior»). Su saldo es lo pendiente de cargar:
+   lo gastado desde el día 1 del mes del último recibo (antes del recibo, también el mes anterior). */
+const isMonthlyCard=a=>!!a&&a.kind==='tarjeta_credito';
+function cardInfo(accId,upto){
+  return cached('card|'+accId+'|'+upto,()=>{
+    let rec=null; const ms=[];
+    for(const m of S.movements.values()){
+      if(m.accountId!==accId||m.historic||m.date>upto) continue;
+      if(m.kind==='transferencia'){ if(m.amountCents>0&&(!rec||m.date>rec.date)) rec=m; } else ms.push(m);
+    }
+    const start=rec?rec.date.slice(0,7)+'-01':'', mStart=upto.slice(0,7)+'-01';
+    let pending=0, month=0, last='';
+    for(const m of ms){ if(m.date>=start) pending+=m.amountCents; if(m.date>=mStart) month+=m.amountCents; if(m.date>last) last=m.date; }
+    return {pending,month,start,receipt:rec,last};
+  });
+}
+const linkedCards=accId=>accSorted(true).filter(c=>isMonthlyCard(c)&&c.linkedAccountId===accId);
+/* Disponible real de una cuenta: su saldo menos lo pendiente de cargar de sus tarjetas */
+function availableAt(accId,upto){ const cards=linkedCards(accId); return cards.length?balanceAt(accId,upto)+cards.reduce((t,c)=>t+cardInfo(c.id,upto).pending,0):null; }
 /* Saldo de cada cuenta al final del día «upto»: apertura + movimientos desde la fecha de apertura */
 function balancesAt(upto){
   return cached('bal|'+upto,()=>{
     const out=new Map();
-    for(const a of S.accounts.values()) out.set(a.id,a.openingCents);
+    for(const a of S.accounts.values()) out.set(a.id,isMonthlyCard(a)?cardInfo(a.id,upto).pending:a.openingCents);
     for(const m of S.movements.values()){
-      const a=S.accounts.get(m.accountId); if(!a||m.historic) continue;
+      const a=S.accounts.get(m.accountId); if(!a||m.historic||isMonthlyCard(a)) continue;
       if(m.date>upto||(a.openingDate&&m.date<a.openingDate)) continue;
       out.set(a.id,out.get(a.id)+m.amountCents);
     }
@@ -1838,6 +1866,10 @@ function insightsFor(ids){
   const recent=inRange(all,addDays(today,-30),today).filter(x=>x.k==='gasto'&&x.v>=15000);
   for(const x of recent){ const hist=inRange(all,addDays(today,-395),addDays(today,-31)).filter(y=>y.k==='gasto'&&y.par===x.par).map(y=>y.v); const med=statsOf(hist).med;
     if(hist.length>=5&&x.v>med*4&&!out.some(o=>o.mid===x.m.payee+x.d+x.v)) out.push({mid:x.m.payee+x.d+x.v,sev:'info',text:`Gasto poco habitual: ${money(x.v)} en ${parentName(x.par)} (${x.m.payee||movConcept(x.m)}, ${fmtDate(x.d)}).`,view:'movimientos',q:x.m.payee||''}); }
+  /* Tarjetas cerca del límite */
+  for(const c of accSorted()){ if(!isMonthlyCard(c)||!c.limitCents||!ids.has(c.id)) continue; const ci=cardInfo(c.id,today), used=-ci.pending;
+    if(used>=c.limitCents) out.push({sev:'crit',text:`${c.name}: ${money(used)} pendiente de cargar, por encima del límite de ${money(c.limitCents)}.`,view:'resumen'});
+    else if(used>=c.limitCents*0.8) out.push({sev:'warn',text:`${c.name}: ${money(used)} de ${money(c.limitCents)} de límite (${NF_PCT0.format(used/c.limitCents)}).`,view:'resumen'}); }
   /* 6. Pendientes de revisar o de pasar a Bluecoins, controles y descuadres */
   const noCat=all.filter(x=>!x.cat&&x.d>=addDays(today,-90)).length; if(noCat) out.push({sev:'info',text:`${noCat} movimientos de los últimos 90 días sin categoría.`,view:'movimientos',state:'sincat'});
   const bad=accSorted().filter(a=>ids.has(a.id)&&lastCheck(a.id)&&checkLive(lastCheck(a.id)).diff!==0); if(bad.length) out.push({sev:'crit',text:`Saldo descuadrado en ${bad.map(a=>a.name).join(', ')}.`,view:'controles'});
@@ -1860,7 +1892,7 @@ function renderResumen(){
   /* Patrimonio */
   const balIds=scopeIds('resumen','resumen.patrimonio','balance'), bal=balancesAt(today);
   const total=[...balIds].reduce((s,id)=>s+(bal.get(id)||0),0);
-  const yearAgo=balancesAt(addDays(today,-365)), totalAgo=[...balIds].reduce((s,id)=>s+(yearAgo.get(id)||0),0);
+  const dAgo=addDays(today,-365), totalAgo=[...balIds].reduce((s,id)=>s+balanceHist(S.accounts.get(id),dAgo),0);
   /* Mes y año */
   const flowCard=(key,title,from,to,pf,pt,vsTxt)=>{ const ids=scopeIds('resumen',key), all=flows(ids), f=totals(inRange(all,from,to)), p=totals(inRange(all,pf,pt));
     return vizCard({title,page:'resumen',el:key,body:`<dl class="kv">
@@ -1885,6 +1917,20 @@ function renderResumen(){
     const spent=budgetSpent(cur,bs);
     const st=budgetState(spent,bt,Math.round(spent/Math.max(0.1,(+today.slice(8,10))/(+ymEnd(ym).slice(8,10)))));
     budgetCard=vizCard({title:'Presupuesto del mes',page:null,body:`<div class="hero-sm">${money(spent)} <span class="muted">de ${money(bt)}</span></div>${meterHtml(spent,bt,st)}<button class="btn ghost sm" data-act="go-view" data-view="presupuestos">Ver presupuestos${icon('chev-r','ic xs')}</button>`}); }
+  /* Tarjetas: lo gastado en el mes y lo disponible de verdad en la cuenta donde se cargan */
+  const tIds=scopeIds('resumen','resumen.tarjetas','balance'), cards=accSorted().filter(a=>isMonthlyCard(a)&&tIds.has(a.id));
+  let cardsCard='';
+  if(cards.length){
+    const hosts=[...new Set(cards.map(c=>c.linkedAccountId).filter(id=>id&&S.accounts.has(id)))];
+    const rowsC=cards.map(c=>{ const ci=cardInfo(c.id,today), used=-ci.pending, lim=c.limitCents;
+      const st=lim?(used>=lim?{cls:'crit',ic:'x-circle',txt:'Límite superado'}:used>=lim*0.8?{cls:'warn',ic:'alert',txt:'Cerca del límite'}:{cls:'good',ic:'check-circle',txt:'Bien'}):null;
+      const extra=ci.pending!==ci.month?`<div class="vsub">Pendiente de cargar ${money(-ci.pending)} (incluye el mes anterior, aún sin recibo)</div>`:'';
+      return `<div class="card-row"><div class="cr-head"><span class="cr-name">${esc(c.name)}</span><b class="cr-val">${money(-ci.month)}</b></div>
+        <div class="vsub">Gastado este mes${ci.last?` · hasta el ${fmtDate(ci.last)}`:''}${lim?` · límite ${money(lim)}`:''}</div>
+        ${lim?`<div class="meter ${st.cls}"${tipAttr(['Pendiente de cargar\t'+money(used),'Límite\t'+money(lim),'Queda\t'+money(lim-used)])}><span style="width:${Math.min(100,used/lim*100)}%"></span></div><div class="meter-st ${st.cls}">${icon(st.ic,'ic xs')}${st.txt} · queda ${money(Math.max(0,lim-used))}</div>`:''}${extra}</div>`; }).join('');
+    const avail=hosts.map(h=>{ const b=balanceAt(h,today), av=availableAt(h,today); return `<dl class="kv avail"><dt>Saldo de ${esc(accName(h))}</dt><dd>${money(b)}</dd><dt>Pendiente de las tarjetas</dt><dd>${money(av-b)}</dd><dt><b>Disponible real</b></dt><dd><b>${money(av)}</b></dd></dl>`; }).join('');
+    cardsCard=vizCard({title:'Tarjetas',sub:monthLong(ym),page:'resumen',el:'resumen.tarjetas',mode:'balance',body:rowsC+avail});
+  }
   /* Avisos */
   const ins=insightsFor(scopeIds('resumen','resumen.avisos'));
   /* Cuentas */
@@ -1892,6 +1938,7 @@ function renderResumen(){
   const rows=accSorted(true).filter(a=>aIds.has(a.id)&&!(a.archived&&!(bal.get(a.id))));
   v.innerHTML=`<div class="vgrid">
     ${vizCard({title:'Patrimonio',page:'resumen',el:'resumen.patrimonio',mode:'balance',body:`<div class="hero">${money(total)}</div><div class="vsub">${balIds.size} cuentas · ${fmtDate(today)} · ${deltaHtml(total,totalAgo,true)} en un año</div>`})}
+    ${cardsCard}
     ${flowCard('resumen.mes',monthLong(ym),ym+'-01',today,prevYm+'-01',addDays(prevYm+'-01',dm),'los mismos días del mes anterior')}
     ${flowCard('resumen.anio','Año '+y,y+'-01-01',today,yearBefore(y+'-01-01'),yearBefore(today),'el mismo periodo de '+(+y-1))}
     ${budgetCard}
@@ -1899,12 +1946,13 @@ function renderResumen(){
     ${vizCard({title:'En qué se va el dinero',sub:monthLong(ym),page:'resumen',el:'resumen.cats',body:catBars})}
     ${vizCard({title:'Avisos',page:'resumen',el:'resumen.avisos',span2:true,body:insightsHtml(ins,6)})}
   </div>
-  <section class="view-sec">${vizCard({title:'Cuentas',page:'resumen',el:'resumen.cuentas',mode:'balance',wide:true,body:`<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Cuenta</th><th>Tipo</th><th class="num">Saldo hoy</th><th>Último control</th><th>Última importación</th></tr></thead><tbody>
-    ${rows.map(a=>{ const c=lastCheck(a.id), l=li.get(a.id), live=c&&checkLive(c);
-      return `<tr class="click" data-acc-movs="${a.id}"><td>${esc(a.name)}</td><td>${esc(ACC_KINDS[a.kind])}</td><td class="num">${balHtml(bal.get(a.id)||0)}</td>
+  <section class="view-sec">${vizCard({title:'Cuentas',page:'resumen',el:'resumen.cuentas',mode:'balance',wide:true,body:`<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Cuenta</th><th>Tipo</th><th class="num">Saldo hoy</th><th class="num">Disponible real</th><th>Último control</th><th>Última importación</th></tr></thead><tbody>
+    ${rows.map(a=>{ const c=lastCheck(a.id), l=li.get(a.id), live=c&&checkLive(c), av=availableAt(a.id,today);
+      return `<tr class="click" data-acc-movs="${a.id}"><td>${esc(a.name)}</td><td>${esc(ACC_KINDS[a.kind])}</td><td class="num">${balHtml(bal.get(a.id)||0)}${isMonthlyCard(a)?'<span class="sub">pendiente de cargar</span>':''}</td>
+      <td class="num">${av==null?'<span class="faint">—</span>':balHtml(av)}</td>
       <td>${c?(live.diff===0?`<span class="state ok">${icon('check-circle')}${fmtDate(c.date)}</span>`:`<span class="state bad">${icon('x-circle')}${fmtDate(c.date)} · ${moneyS(live.diff)}</span>`):'<span class="faint">—</span>'}</td>
       <td>${l?`${fmtDate(l.to||'')||fmtDT(l.at)}`:'<span class="faint">—</span>'}</td></tr>`; }).join('')}
-    </tbody><tfoot><tr><td colspan="2">Total</td><td class="num">${money(rows.reduce((s,a)=>s+(bal.get(a.id)||0),0))}</td><td colspan="2"></td></tr></tfoot></table></div>`})}</section>`;
+    </tbody><tfoot><tr><td colspan="2">Total</td><td class="num">${money(rows.reduce((s,a)=>s+(bal.get(a.id)||0),0))}</td><td colspan="3"></td></tr></tfoot></table></div>`})}</section>`;
   drawViz(v);
 }
 function meterHtml(spent,budget,st){ const pct=budget>0?spent/budget:0;
@@ -3244,7 +3292,7 @@ function openAccDialog(id,prefill=null,onCreated=null){
   $('accKind').innerHTML=Object.entries(ACC_KINDS).map(([k,t])=>`<option value="${k}"${a&&a.kind===k?' selected':''}>${t}</option>`).join('');
   $('accName').value=a?a.name:''; $('accOpening').value=a?centsToComma(a.openingCents):''; $('accOpeningDate').value=a?a.openingDate:'';
   $('accHints').value=a?a.matchHints.join(', '):''; $('accBcName').value=a?a.bluecoins.name:''; $('accBcType').value=a?a.bluecoins.type:'Banco';
-  $('accArchived').checked=a?a.archived:false; $('accInStats').checked=a?a.inStats:true; $('accDelete').hidden=!a; $('accOpening').classList.remove('bad');
+  $('accLimit').value=a&&a.limitCents?centsToComma(a.limitCents):''; $('accLimit').classList.remove('bad'); $('accArchived').checked=a?a.archived:false; $('accInStats').checked=a?a.inStats:true; $('accDelete').hidden=!a; $('accOpening').classList.remove('bad');
   $('accLinked').innerHTML='<option value="">Ninguna</option>'+accSorted(true).filter(x=>!x.kind.startsWith('tarjeta')&&x.id!==id).map(x=>`<option value="${x.id}"${a&&a.linkedAccountId===x.id?' selected':''}>${esc(x.name)}</option>`).join('');
   if(prefill){
     for(const [k,v] of Object.entries(prefill)) if($(k)&&v!=null){ if($(k).type==='checkbox') $(k).checked=!!v; else $(k).value=v; }
@@ -3253,19 +3301,22 @@ function openAccDialog(id,prefill=null,onCreated=null){
   syncAccKind();
   openDlg($('accDlg')); $('accName').focus();
 }
-function syncAccKind(){ $('accLinkedWrap').hidden=!$('accKind').value.startsWith('tarjeta'); }
+function syncAccKind(){ const k=$('accKind').value; $('accLinkedWrap').hidden=!k.startsWith('tarjeta'); $('accLimitWrap').hidden=k!=='tarjeta_credito'; for(const el of document.querySelectorAll('#accDlg .acc-open')) el.hidden=k==='tarjeta_credito'; }
 $('accKind').addEventListener('change',syncAccKind);
 $('accForm').addEventListener('submit',e=>{
   e.preventDefault();
   const name=$('accName').value.trim(); if(!name){ showToast('Escribe un nombre',{error:true}); $('accName').focus(); return; }
   const op=$('accOpening').value.trim(), opening=op?parseAmount(op):0;
   if(opening==null){ $('accOpening').classList.add('bad'); showToast('El saldo de apertura no es válido',{error:true}); return; }
+  const lt=$('accLimit').value.trim(), limit=lt?parseAmount(lt):null;
+  if(lt&&(limit==null||limit===0)){ $('accLimit').classList.add('bad'); showToast('El límite no es válido',{error:true}); return; }
   const od=$('accOpeningDate').value; if(od&&!validYMD(od)){ showToast('La fecha no es válida',{error:true}); return; }
   const dupName=accSorted(true).some(a=>a.id!==accEditing&&a.name.toLowerCase()===name.toLowerCase());
   if(dupName){ showToast('Ya hay una cuenta con ese nombre',{error:true}); return; }
   const data={name,bank:$('accBank').value,kind:$('accKind').value,openingCents:opening,openingDate:od,matchHints:$('accHints').value.split(',').map(x=>x.trim()).filter(Boolean).slice(0,10),
     bluecoins:{name:$('accBcName').value.trim(),type:$('accBcType').value.trim()},archived:$('accArchived').checked,inStats:$('accInStats').checked,
-    linkedAccountId:$('accKind').value.startsWith('tarjeta')?($('accLinked').value||null):null,autoLabels:normLabels(accTags)};
+    linkedAccountId:$('accKind').value.startsWith('tarjeta')?($('accLinked').value||null):null,autoLabels:normLabels(accTags),
+    limitCents:$('accKind').value==='tarjeta_credito'&&limit?Math.abs(limit):null};
   const id=accEditing, newId=uid(), cb=accCreatedCb; accCreatedCb=null; closeDlg($('accDlg'));
   commit(id?'Cuenta guardada':'Cuenta añadida',cs=>{
     if(id){ const cur=S.accounts.get(id); cs.put('accounts',{...clone(cur),...data}); }
@@ -3475,6 +3526,13 @@ function renderHelp(){
   <li>Para reutilizar una selección, escribe un nombre y pulsa <b>Guardar como conjunto</b>; luego basta con pulsar el conjunto.</li>
   <li><b>Volver a lo predeterminado</b>: en ingresos y gastos se suman las cuentas que tienen marcada la casilla <b>Sus ingresos y gastos cuentan en el resumen y las estadísticas</b> (en <span class="path">Cuentas</span>, al pulsar el lápiz de la cuenta; las hipotecas no la tienen); en saldos, todas.</li></ol>
   <p>Cuando la selección deja fuera una cuenta a la que haces traspasos (por ejemplo, la de ahorro), el resumen del periodo muestra aparte los <b>traspasos con otras cuentas</b>.</p>
+
+  <h2>Tarjetas de BBVA</h2>
+  <p>BBVA cobra lo gastado con cada tarjeta en un solo cargo a principios del mes siguiente («Recibo mes anterior»). Por eso:</p>
+  <ul><li>El <b>saldo</b> de una tarjeta es lo <b>pendiente de cargar</b>: lo gastado desde el día 1 del mes. Entre el día 1 y el día del recibo incluye también el mes anterior.</li>
+  <li>En <span class="path">Resumen → Tarjetas</span> ves lo gastado este mes en cada tarjeta, hasta qué día llega el último archivo y el <b>disponible real</b> de la cuenta: su saldo menos lo pendiente de las tarjetas.</li>
+  <li>Para ver si estás cerca del límite: <span class="path">Cuentas → lápiz de la tarjeta → Límite de la tarjeta al mes (€)</span> → <b>Guardar</b>. Aparece una barra con lo que queda y un aviso a partir del 80 %.</li>
+  <li>La tarjeta tiene que ser de tipo <b>Tarjeta de crédito</b> y tener elegida la cuenta en <b>Se carga en la cuenta</b>.</li></ul>
 
   <h2>Estadísticas</h2>
   <ul><li><b>Periodo</b>: este mes, el anterior, los últimos 3, 6 o 12 meses, este año, el anterior, todo o personalizado. Las variaciones se comparan con el periodo anterior del mismo tamaño y con el mismo periodo del año anterior.</li>
@@ -3723,7 +3781,7 @@ window.__fin={S,ui,parseAmount,centsToPlain,centsToComma,parseDateCell,excelSeri
   normText,fingerprint,normMovement,normAccount,normCategory,parseCatLines,balancesAt,balanceAt,flowsBetween,causesFor,
   bluecoinsCsv,movementsToBluecoinsRows,BC_HEADER,commit,undo,backupData,go,ready:()=>!!db,
   readBiff,readCfbStream,rkValue,IMPORTERS,analyzeFile,chainCheck,findHeader,hdrNorm,guessAccount,classifyRow,buildReview,confirmImport,undoImport,
-  ruleMatches,matchRule,flows,totals,scopeIds,periodRange,insightsFor,budgets,budgetSpent,statsOf,balanceHist,openScopeDialog,applyRulesToFree,bcPlan,confirmBcImport,catLabel,findCounterpart,suggestRuleText,normRule,imp,splitLabels,normLabels,mergeLabels,allLabels};
+  ruleMatches,matchRule,cardInfo,availableAt,flows,totals,scopeIds,periodRange,insightsFor,budgets,budgetSpent,statsOf,balanceHist,openScopeDialog,applyRulesToFree,bcPlan,confirmBcImport,catLabel,findCounterpart,suggestRuleText,normRule,imp,splitLabels,normLabels,mergeLabels,allLabels};
 </script>
 </body>
 </html>

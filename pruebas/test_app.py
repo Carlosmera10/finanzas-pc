@@ -365,6 +365,17 @@ def flujo_importacion(browser):
       return {pares: liq.length === 2 && liq[0].transferPairId && liq[0].transferPairId === liq[1].transferPairId, cafes}; }""")
     ok(estado["pares"], "la liquidación de la tarjeta queda emparejada (cuenta ↔ tarjeta)")
     ok(estado["cafes"] == 2, "dos cafés iguales el mismo día se mantienen los dos")
+    # Tarjeta con cargo mensual: su saldo es lo pendiente de cargar y la cuenta tiene «disponible real»
+    tj = p.evaluate("""() => { const F = window.__fin, S = F.S, t = [...S.accounts.values()].find(a => a.kind === 'tarjeta_credito'), b = [...S.accounts.values()].find(a => a.name === 'BBVA');
+      return [F.balanceAt(t.id, '2026-09-03'), F.balanceAt(t.id, '2026-09-30'), F.cardInfo(t.id, '2026-09-30').month, F.availableAt(b.id, '2026-09-30') - F.balanceAt(b.id, '2026-09-30')]; }""")
+    ok(tj == [-5530, -1600, -1600, -1600], f"tarjeta: antes del recibo debe agosto; después, solo lo de septiembre; disponible real = saldo − tarjeta → {tj}")
+    p.click(".nav-btn[data-view=cuentas]")
+    p.click("tr:has-text('Tarjeta BBVA') [data-edit-acc]")
+    ok(p.is_visible("#accLimit") and p.is_hidden("#accOpening"), "las tarjetas tienen límite y no saldo de apertura")
+    p.fill("#accLimit", "20")
+    p.click("#accForm button[type=submit]")
+    p.wait_for_selector("text=Cuenta guardada")
+    p.click(".nav-btn[data-view=importar]")
     # ING: .xls binario; la transferencia de BBVA se empareja
     importar(p, "ing-cuenta.xls")
     p.click("[data-act=rv-new-acc]")
