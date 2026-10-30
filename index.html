@@ -2358,10 +2358,16 @@ function predictMovement(text){
     const kind=topBy(pool,m=>m.kind), same=pool.filter(m=>m.kind===kind);
     const accountId=topBy(same,effAccount);
     const lab=topBy(same.filter(m=>effAccount(m)===accountId),m=>JSON.stringify(m.labels));
-    return {n:pool.length,by,kind,categoryId:topBy(same,m=>m.categoryId),accountId,labels:lab?JSON.parse(lab):[],payee:by==='exact'?topBy(pool,m=>m.payee):''};
+    /* Importe: el habitual si se repite (al menos 2 veces y un 30 % del peso); si no, el del último movimiento */
+    const inAcc=same.filter(m=>effAccount(m)===accountId), base=inAcc.length?inAcc:same, today=todayYMD();
+    const wt=m=>Math.pow(0.5,Math.max(0,daysBetween(m.date,today))/90), amt=new Map(); let tot=0;
+    for(const m of base){ const a=Math.abs(m.amountCents), w=wt(m); tot+=w; const o=amt.get(a)||{w:0,n:0}; o.w+=w; o.n++; amt.set(a,o); }
+    const topA=[...amt].sort((a,b)=>b[1].w-a[1].w)[0], lastM=[...base].sort((a,b)=>a.date<b.date?1:-1)[0];
+    const amount=topA&&topA[1].n>=2&&topA[1].w>=tot*0.3?{cents:topA[0],how:'habitual'}:lastM?{cents:Math.abs(lastM.amountCents),how:'último',date:lastM.date}:null;
+    return {n:pool.length,by,kind,categoryId:topBy(same,m=>m.categoryId),accountId,labels:lab?JSON.parse(lab):[],payee:by==='exact'?topBy(pool,m=>m.payee):'',amount};
   });
 }
-let movTouched=new Set(), movAutoTags=null, movPredFor='';
+let movTouched=new Set(), movAutoTags=null, movPredFor='', movAutoAmount=null;
 function applyPrediction(force=false){
   if(movEditing&&movEditing.source!=='manual') return;
   const text=$('movPayee').value.trim()||$('movConcept').value.trim(), key=normText(text);
@@ -2377,8 +2383,12 @@ function applyPrediction(force=false){
   const tagsTouched=movAutoTags!==null&&JSON.stringify(movTags)!==JSON.stringify(movAutoTags);
   if(isNew&&!tagsTouched){ const auto=S.accounts.get($('movAcc').value)?.autoLabels||[]; movTags=mergeLabels(pr.labels,auto); movAutoTags=[...movTags]; $('movLabelsBox').innerHTML=tagEditorHtml('mov',movTags); if(movTags.length) filled.push('etiquetas'); }
   if(pr.payee&&$('movPayee').value.trim()&&pr.payee!==$('movPayee').value) $('movPayee').value=pr.payee;
-  line.hidden=!filled.length;
-  line.innerHTML=filled.length?`${icon('wand','ic xs')}<span>${esc(filled.join(', ').replace(/^./,c=>c.toUpperCase()))} ${pr.by==='regla'?`según la regla «${esc(pr.rule)}»`:`como en ${NF_INT.format(pr.n)} ${pr.n===1?'movimiento anterior':'movimientos anteriores'}`}</span>`:'';
+  let amtTxt='';
+  const amtNow=$('movAmount').value.trim();
+  if(isNew&&pr.amount&&(!amtNow||amtNow===movAutoAmount)){ movAutoAmount=centsToInput(pr.amount.cents); $('movAmount').value=movAutoAmount; $('movAmount').classList.remove('bad');
+    amtTxt=pr.amount.how==='habitual'?` · importe habitual ${money(pr.amount.cents)}`:` · importe del último (${fmtDate(pr.amount.date)}): ${money(pr.amount.cents)}`; }
+  line.hidden=!filled.length&&!amtTxt;
+  line.innerHTML=filled.length||amtTxt?`${icon('wand','ic xs')}<span>${filled.length?`${esc(filled.join(', ').replace(/^./,c=>c.toUpperCase()))} ${pr.by==='regla'?`según la regla «${esc(pr.rule)}»`:`como en ${NF_INT.format(pr.n)} ${pr.n===1?'movimiento anterior':'movimientos anteriores'}`}`:''}${filled.length?amtTxt:amtTxt.replace(/^ · i/,'I')}</span>`:'';
   checkMovDup();
 }
 /* Cuentas que se miran juntas al buscar duplicados: la cuenta, la cuenta donde se carga su tarjeta y sus tarjetas */
@@ -2441,7 +2451,7 @@ function openMovDialog(id){
   payeeDatalist();
   syncMovKind(m);
   movFormSnap=JSON.stringify(movFormValues()); movPrevAcc=$('movAcc').value;
-  movTouched=new Set(m?['kind','acc']:[]); movAutoTags=m?null:[...movTags]; movPredFor=normText(m?(m.payee||movConcept(m)):''); $('movPred').hidden=true;
+  movTouched=new Set(m?['kind','acc']:[]); movAutoTags=m?null:[...movTags]; movAutoAmount=null; movPredFor=normText(m?(m.payee||movConcept(m)):''); $('movPred').hidden=true;
   checkMovDup();
   openDlg($('movDlg'));
   (imported?$('movCat'):m?$('movAmount'):$('movPayee')).focus();
@@ -2461,6 +2471,7 @@ $('movChips').addEventListener('click',e=>{
   commit('Marcado como no duplicado',cs=>{ for(const x of twins) cs.put('movements',{...clone(x),notDup:true}); });
 });
 for(const id of ['movAmount','movDate','movOther']) $(id).addEventListener('input',checkMovDup);
+$('movAmount').addEventListener('focus',()=>{ if(movAutoAmount&&$('movAmount').value===movAutoAmount) $('movAmount').select(); });
 $('movOther').addEventListener('change',checkMovDup);
 function syncMovKind(m=movEditing){
   for(const b of $('movKind').querySelectorAll('button')) b.setAttribute('aria-pressed',String(b.dataset.kind===movKind));
@@ -3665,7 +3676,7 @@ function renderHelp(){
 
   <h2>Apuntar un movimiento a mano</h2>
   <ol><li>Pulsa <kbd>N</kbd> (o <span class="path">Movimientos → Nuevo movimiento</span>). El cursor empieza en <b>Beneficiario</b>.</li>
-  <li>Escribe el beneficiario o elígelo de la lista (salen primero los que más usas). La app rellena el tipo, la cuenta (por ejemplo, la tarjeta), la categoría y las etiquetas con lo más habitual para ese beneficiario, dando más peso a lo reciente. Debajo indica qué ha rellenado y con cuántos movimientos anteriores. Lo que hayas elegido tú antes no se cambia.</li>
+  <li>Escribe el beneficiario o elígelo de la lista (salen primero los que más usas). La app rellena el tipo, la cuenta (por ejemplo, la tarjeta), la categoría, las etiquetas y el <b>importe</b> con lo más habitual para ese beneficiario, dando más peso a lo reciente. El importe es el que se repite (por ejemplo, una cuota fija); si cambia cada vez, el del último movimiento. Al entrar en <b>Importe</b> queda seleccionado: basta con escribir el nuevo. Debajo indica qué ha rellenado y con cuántos movimientos anteriores. Lo que hayas elegido tú antes no se cambia.</li>
   <li>Si ya hay un movimiento con el mismo importe en esa cuenta (o en su tarjeta, o en la cuenta donde se carga) con hasta 3 días de diferencia, aparece <b>Posible duplicado</b> con los movimientos parecidos y el botón pasa a <b>Guardar igualmente</b>.</li></ol>
 
   <h2>Duplicados</h2>

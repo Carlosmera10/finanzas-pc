@@ -32,7 +32,7 @@ App de escritorio (PWA para Chrome) que complementa a **Bluecoins** en Android: 
 - **Estadísticas:** periodos (mes, 3/6/12 meses, año, todo, personalizado), ingresos y gastos por mes, ahorro y tasa de ahorro, composición por categoría con subcategorías y variaciones, evolución por categoría, mapa de calor, beneficiarios, etiquetas, días de la semana, gastos más grandes y avisos.
 - **Balance:** evolución del patrimonio (total o por cuenta), activos y deudas, variación de cada cuenta.
 - **Presupuestos:** mensuales por categoría o subcategoría, con propuesta calculada del histórico (media, mediana, percentil 75), previsión a fin de mes y estado.
-- **Alta rápida de movimientos:** al escribir el beneficiario se rellenan tipo, cuenta o tarjeta, categoría y etiquetas con lo más habitual (con más peso a lo reciente).
+- **Alta rápida de movimientos:** al escribir el beneficiario se rellenan tipo, cuenta o tarjeta, categoría, etiquetas e importe con lo más habitual (con más peso a lo reciente).
 - **Control de duplicados:** aviso al apuntar a mano; al importar, el movimiento del banco sustituye al apuntado a mano y se proponen quitar los cargos que ya no aparecen (anulados); marca «No es duplicado».
 - **Tarjetas de cargo mensual:** su saldo es lo pendiente de cargar; lo gastado en el mes, límite con aviso y disponible real de la cuenta donde se cargan.
 - **Qué cuentas se suman:** cada página y cada gráfico o tabla puede usar su propia selección de cuentas, con conjuntos guardados.
