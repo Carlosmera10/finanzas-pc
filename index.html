@@ -449,6 +449,80 @@ dl.kv.avail{margin-top:10px}
   .scope-chip{max-width:200px}
   .ins{flex-wrap:wrap}
 }
+
+/* Bluecoins opcional, sincronización y piezas solo del móvil */
+body.no-bc .bc-only{display:none!important}
+.set-grid .panel.span2{grid-column:1/-1}
+.sync-st{margin:0 0 10px;font-size:13.5px;color:var(--muted)}
+.sync-st.bad{color:var(--neg)}
+.sync-fields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-bottom:6px}
+.sync-fields .fld{display:flex;flex-direction:column;gap:4px;font-size:12.5px;font-weight:600;color:var(--muted);min-width:0}
+.sync-help{margin-top:10px;font-size:13.5px}
+.sync-help summary{cursor:pointer;font-weight:600;color:var(--accent-ink)}
+.sync-help ol{margin:8px 0 0;padding-left:20px;display:flex;flex-direction:column;gap:4px}
+.btn.danger-t{color:var(--neg)}
+.side-note.bad{color:#ff9b8f}
+.bottom-nav,.f-toggle,.mob-pay{display:none}
+.bn-dot{display:none}
+@media (max-width:760px){
+  body{padding-bottom:calc(66px + env(safe-area-inset-bottom))}
+  .topbar{padding-top:calc(8px + env(safe-area-inset-top))}
+  .bottom-nav{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));position:fixed;left:0;right:0;bottom:0;z-index:300;background:var(--nav);padding:6px 6px calc(6px + env(safe-area-inset-bottom));box-shadow:0 -6px 20px rgba(10,16,30,.18)}
+  .bottom-nav button{display:flex;flex-direction:column;align-items:center;gap:2px;border:0;background:transparent;color:var(--nav-muted);font:600 11px/1.2 var(--font);padding:6px 2px;border-radius:10px;position:relative;cursor:pointer;min-width:0}
+  .bottom-nav button span{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .bottom-nav button .ic{width:22px;height:22px}
+  .bottom-nav button[aria-current=page]{color:#fff}
+  .bottom-nav .bn-fab{background:var(--accent);color:#fff;width:54px;height:54px;border-radius:16px;justify-self:center;margin-top:-20px;box-shadow:0 8px 20px rgba(14,110,95,.45);padding:0;justify-content:center}
+  .bottom-nav .bn-fab .ic{width:28px;height:28px}
+  body.sync-error .bn-dot{display:block;position:absolute;top:4px;left:calc(50% + 8px);width:9px;height:9px;border-radius:50%;background:#ff6b5b;border:2px solid var(--nav)}
+  .toast-wrap,#toastWrap{bottom:calc(76px + env(safe-area-inset-bottom))!important}
+  .sidebar{padding-bottom:calc(14px + env(safe-area-inset-bottom))}
+  .nav-btn{padding-top:11px;padding-bottom:11px}
+  #menuBtn{display:none}
+  .sync-fields{grid-template-columns:minmax(0,1fr)}
+  .inp,select.inp,textarea.inp{font-size:16px}
+  /* Diálogos a pantalla completa por abajo, como una hoja */
+  dialog,dialog.narrow{width:100vw;max-width:100vw;margin:auto 0 0;border-radius:16px 16px 0 0;max-height:calc(100dvh - 12px);border-width:1px 0 0}
+  .dlg{max-height:calc(100dvh - 14px)}
+  .dlg-foot{padding-bottom:calc(12px + env(safe-area-inset-bottom))}
+  .dlg-foot .btn{flex:1 1 auto;justify-content:center}
+  .dlg-foot .sp{display:none}
+  /* Filtros plegables */
+  .f-toggle{display:inline-flex}
+  .filters:not(.open) label.fld:not(.grow),.filters:not(.open) [data-act=clear-filters]{display:none}
+  .filters .grow{flex:1 1 0;min-width:0}
+  .filters.open .grow{flex-basis:100%}
+  /* Movimientos en tarjetas */
+  .tbl-wrap:has(.mv-tbl){border-radius:12px}
+  .mv-tbl,.mv-tbl tbody{display:block}
+  .mv-tbl thead{display:none}
+  .mv-tbl tr{display:flex;flex-wrap:wrap;align-items:baseline;column-gap:8px;row-gap:2px;padding:10px 12px;border-bottom:1px solid var(--line)}
+  .mv-tbl tr:last-child{border-bottom:0}
+  .mv-tbl td{display:block;border:0!important;padding:0!important;background:transparent!important;max-width:none;min-width:0}
+  .mv-tbl tr::after{content:"";order:3;flex-basis:100%;height:0}
+  .mv-tbl td.chk{order:0;flex:0 0 22px;align-self:center}
+  .mv-tbl td.mc{order:1;flex:1 1 0;white-space:normal}
+  .mv-tbl td.ma{order:2;flex:0 0 auto;margin-left:auto;font-size:15px;font-weight:700}
+  .mv-tbl td.mc{max-width:none!important}
+  .mv-tbl .mc .mc-c.same{display:none}
+  .mv-tbl td.md,.mv-tbl td.macc,.mv-tbl td.mcat{order:4;flex:0 1 auto;font-size:12.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .mv-tbl td.md{margin-left:30px}
+  .mv-tbl td.macc{max-width:34%}
+  .mv-tbl td.mcat{flex:1 1 0}
+  .mv-tbl td.macc::before,.mv-tbl td.mcat::before{content:"· "}
+  .mv-tbl td.mcat .chip{font-size:11px;padding:0 6px}
+  .mv-tbl td.mf{order:5;margin-left:auto}
+  .mv-tbl td.ml{order:6;flex-basis:100%;margin-left:30px}
+  .mv-tbl td.ml:empty{display:none}
+  .mv-tbl td.mp{display:none}
+  .mv-tbl .mc>*{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .mv-tbl .mc .mob-pay{font-weight:600}
+  .mv-tbl .mc .mob-pay~.mc-c{font-size:12.5px;color:var(--muted)}
+  .mv-tbl .mc>.kic{display:inline;float:left;margin-right:4px}
+  .mv-tbl .mc.nopay .mc-c{font-weight:600}
+  .bulk{position:sticky;top:calc(56px + env(safe-area-inset-top));z-index:20}
+  .bulk .bulk-tags{flex-basis:100%}
+}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
 </head>
@@ -500,6 +574,8 @@ dl.kv.avail{margin-top:10px}
   <symbol id="i-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></symbol>
   <symbol id="i-zap" viewBox="0 0 24 24"><path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/></symbol>
   <symbol id="i-layers" viewBox="0 0 24 24"><path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></symbol>
+  <symbol id="i-cloud" viewBox="0 0 24 24"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></symbol>
+  <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M21 4h-7"/><path d="M10 4H3"/><path d="M21 12h-9"/><path d="M8 12H3"/><path d="M21 20h-5"/><path d="M12 20H3"/><path d="M14 2v4"/><path d="M8 10v4"/><path d="M16 18v4"/></symbol>
   <symbol id="i-monitor" viewBox="0 0 24 24"><rect width="20" height="14" x="2" y="3" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></symbol>
 </svg>
 
@@ -524,6 +600,7 @@ dl.kv.avail{margin-top:10px}
       <button class="nav-btn" data-view="instrucciones" title="Instrucciones"><svg class="ic"><use href="#i-book"/></svg>Instrucciones</button>
     </nav>
     <div class="side-foot">
+      <button class="side-note bad" id="syncNote" hidden><svg class="ic sm"><use href="#i-cloud"/></svg><span>Sincronización en pausa</span></button>
       <button class="side-note warn" id="backupNote" hidden><svg class="ic sm"><use href="#i-shield"/></svg><span></span></button>
       <button class="side-note" id="installBtn" hidden><svg class="ic sm"><use href="#i-install"/></svg>Instalar la app</button>
     </div>
@@ -538,6 +615,15 @@ dl.kv.avail{margin-top:10px}
     <main class="view" id="view" tabindex="-1"></main>
   </div>
 </div>
+
+<!-- Solo en el móvil: barra inferior con el botón de nuevo movimiento -->
+<nav class="bottom-nav" id="bottomNav" aria-label="Navegación principal">
+  <button type="button" data-bn="resumen"><svg class="ic"><use href="#i-home"/></svg><span>Resumen</span></button>
+  <button type="button" data-bn="movimientos"><svg class="ic"><use href="#i-list"/></svg><span>Movimientos</span></button>
+  <button type="button" class="bn-fab" id="bnNew" aria-label="Nuevo movimiento"><svg class="ic"><use href="#i-plus"/></svg></button>
+  <button type="button" data-bn="estadisticas"><svg class="ic"><use href="#i-chart"/></svg><span>Estadísticas</span></button>
+  <button type="button" id="bnMore"><svg class="ic"><use href="#i-menu"/></svg><span>Más</span><i class="bn-dot"></i></button>
+</nav>
 
 <!-- Movimiento -->
 <dialog id="movDlg"><form class="dlg" id="movForm" novalidate>
@@ -590,8 +676,8 @@ dl.kv.avail{margin-top:10px}
       <label class="fld acc-open">Fecha del saldo de apertura<input class="inp" type="date" id="accOpeningDate"></label>
       <div class="fld full">Etiquetas automáticas de sus movimientos<div id="accLabelsBox"></div></div>
       <label class="fld full">Identificadores en los archivos del banco<input class="inp" type="text" id="accHints" autocomplete="off" placeholder="1234, ES12…5678"></label>
-      <label class="fld">Nombre en Bluecoins<input class="inp" type="text" id="accBcName" maxlength="80" autocomplete="off"></label>
-      <label class="fld">Tipo en Bluecoins<input class="inp" type="text" id="accBcType" list="bcTypeList" maxlength="40" autocomplete="off"></label>
+      <label class="fld bc-only">Nombre en Bluecoins<input class="inp" type="text" id="accBcName" maxlength="80" autocomplete="off"></label>
+      <label class="fld bc-only">Tipo en Bluecoins<input class="inp" type="text" id="accBcType" list="bcTypeList" maxlength="40" autocomplete="off"></label>
       <div class="fld full"><label class="chk"><input type="checkbox" id="accInStats">Sus ingresos y gastos cuentan en el resumen y las estadísticas</label><label class="chk"><input type="checkbox" id="accArchived">Archivada</label></div>
     </div>
   </div>
@@ -612,7 +698,7 @@ dl.kv.avail{margin-top:10px}
       <label class="fld full">Cuenta<select class="inp" id="chkAcc"></select></label>
       <label class="fld">Fecha<input class="inp" type="date" id="chkDate"></label>
       <label class="fld">Saldo real en el banco (€)<input class="inp amount" type="text" inputmode="decimal" id="chkReal" autocomplete="off" placeholder="0,00"></label>
-      <label class="fld">Saldo en Bluecoins (€)<input class="inp amount" type="text" inputmode="decimal" id="chkBc" autocomplete="off" placeholder="opcional"></label>
+      <label class="fld bc-only">Saldo en Bluecoins (€)<input class="inp amount" type="text" inputmode="decimal" id="chkBc" autocomplete="off" placeholder="opcional"></label>
       <label class="fld full">Nota<input class="inp" type="text" id="chkNote" autocomplete="off"></label>
     </div>
     <dl class="calc" id="chkCalc"></dl>
@@ -721,7 +807,7 @@ dl.kv.avail{margin-top:10px}
 const APP_ID='finanzas-pc', DATA_VERSION=1;
 const UI_KEY='fin_ui', DB_NAME='fin_db', DB_VER=1, BC_NAME='fin_tabs', LOCK_NAME='fin_write';
 const STORES=['accounts','movements','imports','rules','categories','checks','exports','meta'];
-const META_NO_BACKUP=new Set(['importFolder']);
+const META_NO_BACKUP=new Set(['importFolder','__del']);
 const PAGE=200;
 const BANKS={bbva:'BBVA',ing:'ING',tr:'Trade Republic',otro:'Otro'};
 const ACC_KINDS={corriente:'Cuenta corriente',ahorro:'Ahorro / remunerada',tarjeta_debito:'Tarjeta de débito',tarjeta_credito:'Tarjeta de crédito',inversion:'Inversión',efectivo:'Efectivo',prestamo:'Préstamo / hipoteca'};
@@ -1366,7 +1452,7 @@ function showSaveError(e){
 class ChangeSet{
   constructor(){ this.touched=new Map(); }
   _remember(store,key){ const k=store+'\u0000'+key; if(!this.touched.has(k)) this.touched.set(k,{store,key,old:clone(S[store].get(key))}); }
-  put(store,rec){ const key=keyOf(store,rec); this._remember(store,key); if(store!=='meta') rec.updatedAt=nowISO(); S[store].set(key,rec); return rec; }
+  put(store,rec){ const key=keyOf(store,rec); this._remember(store,key); rec.updatedAt=nowISO(); S[store].set(key,rec); return rec; }
   del(store,key){ if(!S[store].has(key)) return; this._remember(store,key); S[store].delete(key); }
   get empty(){ return this.touched.size===0; }
 }
@@ -1379,9 +1465,11 @@ async function commit(msg,fn,opts={}){
   const inverse=[...cs.touched.values()].map(t=>({store:t.store,key:t.key,value:t.old}));
   if(r===false||cs.empty){ applyMem(inverse); return false; }
   const entries=[...cs.touched.values()].map(t=>({store:t.store,key:t.key,value:clone(S[t.store].get(t.key))}));
+  const tombBefore=S.meta.get(TOMB_KEY);
   bumpData(); render();
-  try{ await persistEntries(entries); }
-  catch(e){ applyMem(inverse); render(); showSaveError(e); return false; }
+  try{ await persistEntries(syncTrack(entries)); }
+  catch(e){ applyMem(inverse); if(tombBefore) S.meta.set(TOMB_KEY,tombBefore); else S.meta.delete(TOMB_KEY); render(); showSaveError(e); return false; }
+  syncDirty();
   const m=typeof r==='string'?r:msg;
   if(!opts.noUndo){ undoStack.push({msg:m,inverse,redo:entries}); if(undoStack.length>40) undoStack.shift(); }
   broadcast();
@@ -1391,19 +1479,44 @@ async function commit(msg,fn,opts={}){
 async function undo(){
   const u=undoStack.pop();
   if(!u){ showToast('No hay nada que deshacer'); return; }
-  applyMem(u.inverse); render();
-  try{ await persistEntries(u.inverse.map(e=>({...e,value:clone(e.value)}))); broadcast(); showToast('Deshecho'+(u.msg?': '+u.msg.charAt(0).toLowerCase()+u.msg.slice(1):'')); }
-  catch(e){ applyMem(u.redo); render(); showSaveError(e); }
+  /* Lo que se recupera cuenta como un cambio de ahora (así la sincronización no lo vuelve a borrar ni lo pisa con lo anterior) */
+  const at=nowISO(), back=u.inverse.map(e=>{ const v=clone(e.value); if(v&&syncable(e.store,e.key)) v.updatedAt=at; return {...e,value:v}; });
+  const tombBefore=S.meta.get(TOMB_KEY);
+  applyMem(back); render();
+  try{ await persistEntries(syncTrack(back)); broadcast(); syncDirty(); showToast('Deshecho'+(u.msg?': '+u.msg.charAt(0).toLowerCase()+u.msg.slice(1):'')); }
+  catch(e){ applyMem(u.redo); if(tombBefore) S.meta.set(TOMB_KEY,tombBefore); else S.meta.delete(TOMB_KEY); render(); showSaveError(e); }
 }
 /* Ajustes internos (sin «Deshacer») */
 async function setMeta(key,value){
-  const rec={key,value}, old=S.meta.get(key);
+  const rec={key,value,updatedAt:nowISO()}, old=S.meta.get(key);
   S.meta.set(key,rec); bumpData();
-  try{ await persistEntries([{store:'meta',key,value:rec}]); broadcast(); }
+  try{ await persistEntries([{store:'meta',key,value:rec}]); broadcast(); if(syncable('meta',key)) syncDirty(); }
   catch(e){ if(old) S.meta.set(key,old); else S.meta.delete(key); showSaveError(e); }
 }
 
+/* ================= Registro para la sincronización =================
+   Cada registro lleva la hora de su último cambio (updatedAt). Los borrados se apuntan en meta «__del»
+   (almacén|clave → hora), para que la sincronización los lleve también al otro dispositivo.
+   Algunos ajustes son de cada dispositivo y no se sincronizan. */
+const TOMB_KEY='__del', META_LOCAL=new Set(['importFolder','lastBackup',TOMB_KEY]);
+const isLocalMeta=k=>META_LOCAL.has(k)||String(k).startsWith('ilegibles_');
+const syncable=(store,key)=>store!=='meta'||!isLocalMeta(key);
+function syncTrack(entries){
+  const cur=getMeta(TOMB_KEY)||{}; let tomb=null; const at=nowISO();
+  for(const e of entries){
+    if(!syncable(e.store,e.key)) continue;
+    const k=e.store+'|'+e.key;
+    if(e.value===undefined){ (tomb||(tomb={...cur}))[k]=at; }
+    else if(cur[k]!==undefined){ tomb=tomb||{...cur}; delete tomb[k]; }
+  }
+  if(!tomb) return entries;
+  const rec={key:TOMB_KEY,value:tomb}; S.meta.set(TOMB_KEY,rec);
+  return [...entries,{store:'meta',key:TOMB_KEY,value:clone(rec)}];
+}
+
 /* ================= Dominio ================= */
+const useBc=()=>getMeta('useBluecoins')!==false;
+const bcSame=t=>useBc()?t+' (igual que en Bluecoins)':t;
 const accSorted=(all=false)=>[...S.accounts.values()].filter(a=>all||!a.archived).sort((a,b)=>a.order-b.order||a.name.localeCompare(b.name,'es'));
 const accName=id=>S.accounts.get(id)?.name||'(cuenta borrada)';
 const catParents=kind=>[...S.categories.values()].filter(c=>!c.parent&&(!kind||c.kind===kind)).sort((a,b)=>a.name.localeCompare(b.name,'es'));
@@ -1574,7 +1687,8 @@ function go(view,opts={}){
   window.scrollTo(0,opts.keepScroll?(scrollMemo[view]||0):0);
 }
 function render(){
-  for(const b of document.querySelectorAll('.nav-btn')){ if(b.dataset.view===ui.view) b.setAttribute('aria-current','page'); else b.removeAttribute('aria-current'); }
+  for(const b of document.querySelectorAll('.nav-btn,[data-bn]')){ if((b.dataset.view||b.dataset.bn)===ui.view) b.setAttribute('aria-current','page'); else b.removeAttribute('aria-current'); }
+  document.body.classList.toggle('no-bc',!useBc());
   $('viewTitle').textContent=VIEWS[ui.view];
   document.title=VIEWS[ui.view]+' · Finanzas';
   const y=window.scrollY;
@@ -1589,6 +1703,7 @@ function renderSideNotes(){
   const b=$('navMovBadge'); b.hidden=!pendRev; b.textContent=pendRev>999?'999+':pendRev; b.title=pendRev+' sin revisar';
   const bad=accSorted().filter(a=>{ const c=lastCheck(a.id); return c&&checkLive(c).diff!==0; }).length;
   const cb=$('navChkBadge'); cb.hidden=!bad; cb.textContent=bad; cb.title=bad+' cuentas con descuadre';
+  const sn=$('syncNote'); sn.hidden=!(syncCfg&&syncRt.status==='error'&&syncRt.halt); sn.title=syncRt.err?syncRt.err.msg:'';
   const last=getMeta('lastBackup'), has=S.movements.size+S.accounts.size>0;
   const days=last?daysBetween(ymd(new Date(last)),todayYMD()):null;
   const note=$('backupNote');
@@ -1989,7 +2104,7 @@ function insightsHtml(list,max=8){
 function renderResumen(){
   const v=$('view'), accs=accSorted();
   setActions(scopeChip('resumen',null,'flow'));
-  if(!accs.length){ v.innerHTML=`<div class="empty">${icon('wallet','ic')}<div>Aún no hay cuentas.</div><button class="btn" data-act="new-acc">${icon('plus')}Añadir cuenta</button></div>`; return; }
+  if(!accs.length){ v.innerHTML=`<div class="empty">${icon('wallet','ic')}<div>Aún no hay cuentas.</div><button class="btn" data-act="new-acc">${icon('plus')}Añadir cuenta</button>${syncCfg?'':`<button class="btn sec" data-act="go-view" data-view="ajustes">${icon('cloud')}Traer los datos del otro dispositivo</button>`}</div>`; return; }
   VIZ.clear();
   const today=todayYMD(), ym=ymOf(today), y=today.slice(0,4);
   /* Patrimonio */
@@ -2371,13 +2486,15 @@ function renderMovs(){
   const v=$('view');
   const prevFocus=document.activeElement&&document.activeElement.id;
   const tw=v.querySelector('.tbl-wrap.tall'), tScroll=tw?[tw.scrollTop,tw.scrollLeft]:null;
-  v.innerHTML=`<div class="filters" id="movFilters">
+  const nf=[f.acc,f.from,f.to,f.cat,f.label,f.state].filter(Boolean).length;
+  v.innerHTML=`<div class="filters${ui.mfOpen?' open':''}" id="movFilters">
+      <button type="button" class="btn sec f-toggle" data-act="toggle-filters" aria-expanded="${!!ui.mfOpen}">${icon('sliders')}Filtros${nf?` <b class="badge">${nf}</b>`:''}</button>
       <label class="fld">Cuenta<select class="inp f-acc" data-mf="acc"><option value="">Todas</option>${accOptionsHtml(f.acc,{all:true})}</select></label>
       <label class="fld">Desde<input class="inp f-date" type="date" data-mf="from" value="${esc(f.from)}"></label>
       <label class="fld">Hasta<input class="inp f-date" type="date" data-mf="to" value="${esc(f.to)}"></label>
       <label class="fld">Categoría<select class="inp f-cat" data-mf="cat"><option value="">Todas</option><option value="__none"${f.cat==='__none'?' selected':''}>Sin categoría</option>${catOptionsHtml(null,f.cat,{allowParents:true})}</select></label>
       <label class="fld">Etiqueta<select class="inp f-label" data-mf="label"><option value="">Todas</option><option value="__none"${f.label==='__none'?' selected':''}>Sin etiqueta</option>${allLabels().map(l=>`<option value="${esc(l)}"${l===f.label?' selected':''}>${esc(l)}</option>`).join('')}</select></label>
-      <label class="fld">Estado<select class="inp f-state" data-mf="state">${STATE_OPTS.map(([k,t])=>`<option value="${k}"${k===f.state?' selected':''}>${t}</option>`).join('')}</select></label>
+      <label class="fld">Estado<select class="inp f-state" data-mf="state">${STATE_OPTS.filter(([k])=>k!=='noexp'||useBc()||f.state==='noexp').map(([k,t])=>`<option value="${k}"${k===f.state?' selected':''}>${t}</option>`).join('')}</select></label>
       <label class="fld grow">Buscar<input class="inp" type="search" id="movSearch" data-mf="q" value="${esc(f.q)}" placeholder="Concepto, beneficiario, nota, etiqueta o importe" autocomplete="off"></label>
       <button class="btn ghost" data-act="clear-filters"${[f.acc,f.from,f.to,f.cat,f.label,f.state,f.q].some(Boolean)?'':' disabled'}>${icon('x')}Limpiar</button>
     </div>
@@ -2408,18 +2525,18 @@ function movRowHtml(m){
   if(m.pending) flags.push(`<span class="warn" title="Pendiente (sin consolidar)">${icon('clock')}</span>`);
   if(m.source==='manual') flags.push(`<span title="Añadido a mano">${icon('hand')}</span>`);
   if(m.historic) flags.push(`<span title="Histórico de Bluecoins: cuenta en las estadísticas, no en el saldo">${icon('archive')}</span>`);
-  if(m.changedAfterExport) flags.push(`<span class="warn" title="Cambiado después de exportarlo a Bluecoins">${icon('alert')}</span>`);
-  else if(m.exportId) flags.push(`<span title="${m.exportId==='bluecoins'?'Ya está en Bluecoins':'Exportado a Bluecoins'}">${icon('send')}</span>`);
+  if(useBc()&&m.changedAfterExport) flags.push(`<span class="warn" title="Cambiado después de exportarlo a Bluecoins">${icon('alert')}</span>`);
+  else if(useBc()&&m.exportId) flags.push(`<span title="${m.exportId==='bluecoins'?'Ya está en Bluecoins':'Exportado a Bluecoins'}">${icon('send')}</span>`);
   if(m.extra) flags.push(`<span class="warn" title="Extraordinario: no cuenta en los presupuestos">${icon('zap')}</span>`);
   if(m.reviewed) flags.push(`<span class="ok" title="Revisado">${icon('check-circle')}</span>`);
-  const kindIc=m.kind==='transferencia'?`<span title="Transferencia${m.transferAccountId?' con '+esc(accName(m.transferAccountId)):''}">${icon('swap','ic xs')}</span> `:'';
+  const kindIc=m.kind==='transferencia'?`<span class="kic" title="Transferencia${m.transferAccountId?' con '+esc(accName(m.transferAccountId)):''}">${icon('swap','ic xs')}</span> `:'';
   const cat=m.kind==='transferencia'?`<span class="chip info">${m.transferAccountId?(m.amountCents<0?'→ ':'← ')+esc(accName(m.transferAccountId)):'Transferencia'}</span>`:m.categoryId?esc(catLabel(m.categoryId)):'<span class="faint">—</span>';
   return `<tr class="click${selMov.has(m.id)?' sel':''}" data-mov="${m.id}"><td class="chk"><input type="checkbox" data-sel="${m.id}"${selMov.has(m.id)?' checked':''} aria-label="Seleccionar"></td>
-    <td class="nowrap">${fmtDate(m.date)}</td><td class="ellip macc" title="${esc(accName(m.accountId))}">${esc(accName(m.accountId))}</td>
-    <td class="ellip mc" title="${esc(m.rawConcept||movConcept(m))}">${kindIc}${esc(movConcept(m))}${m.notes||m.bankCategory?`<span class="sub">${esc(m.notes||m.bankCategory)}</span>`:''}</td>
+    <td class="nowrap md">${fmtDate(m.date)}</td><td class="ellip macc" title="${esc(accName(m.accountId))}">${esc(accName(m.accountId))}</td>
+    <td class="ellip mc${m.payee?'':' nopay'}" title="${esc(m.rawConcept||movConcept(m))}">${kindIc}${m.payee?`<span class="mob-pay">${esc(m.payee)}</span>`:''}<span class="mc-c${m.payee&&normText(m.payee)===normText(movConcept(m))?' same':''}">${esc(movConcept(m))}</span>${m.notes||m.bankCategory?`<span class="sub">${esc(m.notes||m.bankCategory)}</span>`:''}</td>
     <td class="ellip mp">${esc(m.payee)}</td><td class="ellip mcat" title="${m.kind==='transferencia'?'':esc(catLabel(m.categoryId))}">${cat}</td>
-    <td>${m.labels.length?`<div class="chips">${m.labels.map(l=>`<span class="chip">${esc(l)}</span>`).join('')}</div>`:''}</td>
-    <td class="num">${amtHtml(m.amountCents,m.kind)}</td><td class="nowrap"><span class="flags">${flags.join('')}</span></td></tr>`;
+    <td class="ml">${m.labels.length?`<div class="chips">${m.labels.map(l=>`<span class="chip">${esc(l)}</span>`).join('')}</div>`:''}</td>
+    <td class="num ma">${amtHtml(m.amountCents,m.kind)}</td><td class="nowrap mf"><span class="flags">${flags.join('')}</span></td></tr>`;
 }
 function exportFilterCsv(){
   const list=filteredMovs();
@@ -2538,7 +2655,7 @@ function openMovDialog(id){
   if(m){ chips.push(`<span class="chip">${m.source==='manual'?'Manual':m.source==='bluecoins'?'Histórico de Bluecoins':'Importado'}</span>`);
     if(m.historic) chips.push(`<span class="chip">${icon('archive','ic xs')}No cuenta en el saldo</span>`);
     if(m.pending) chips.push(`<span class="chip warn">${icon('clock','ic xs')}Pendiente</span>`);
-    if(m.exportId) chips.push(`<span class="chip info">${icon('send','ic xs')}${m.exportId==='bluecoins'?'Ya está en Bluecoins':'Exportado a Bluecoins'}</span>`);
+    if(useBc()&&m.exportId) chips.push(`<span class="chip info">${icon('send','ic xs')}${m.exportId==='bluecoins'?'Ya está en Bluecoins':'Exportado a Bluecoins'}</span>`);
     if(m.changedAfterExport) chips.push(`<span class="chip warn">${icon('alert','ic xs')}Cambiado tras exportar</span>`);
     if(isInt(m.bankBalanceCents)) chips.push(`<span class="chip">Saldo del banco: ${money(m.bankBalanceCents)}</span>`);
     if(m.bankCategory) chips.push(`<span class="chip">${esc(m.bankCategory)}</span>`);
@@ -2659,7 +2776,7 @@ function saveMovDialog(){
 }
 $('movDelete').addEventListener('click',async()=>{
   const m=movEditing; if(!m) return;
-  if(m.exportId&&!await askConfirm('Eliminar movimiento','<p>Este movimiento ya se exportó a Bluecoins. Si lo eliminas aquí, tendrás que borrarlo también a mano en Bluecoins.</p>','Eliminar',true)) return;
+  if(useBc()&&m.exportId&&!await askConfirm('Eliminar movimiento','<p>Este movimiento ya se exportó a Bluecoins. Si lo eliminas aquí, tendrás que borrarlo también a mano en Bluecoins.</p>','Eliminar',true)) return;
   closeDlg($('movDlg'));
   deleteMovements([m.id]);
 });
@@ -3176,9 +3293,10 @@ const imp={files:[],sel:0,sheet:0,busy:false,needsPerm:false,raw:false};
 const fileImported=f=>[...S.imports.values()].some(r=>r.fileHash===f.hash);
 function renderImport(){
   const v=$('view'), folder=getMeta('importFolder'), f=imp.files[imp.sel];
-  v.innerHTML=`<div class="drop" id="dropZone">${icon('file-in','ic')}<span>Arrastra aquí los archivos del banco</span>
+  const touch=matchMedia('(pointer:coarse)').matches;
+  v.innerHTML=`<div class="drop" id="dropZone">${icon('file-in','ic')}<span>${touch?'Elige los archivos descargados del banco':'Arrastra aquí los archivos del banco'}</span>
       <button class="btn sec" data-act="pick-files">${icon('file')}Elegir archivos</button></div>
-    <div class="folder-line">${icon('folder')}
+    <div class="folder-line"${window.showDirectoryPicker||folder?'':' hidden'}>${icon('folder')}
       ${folder?`<b>${esc(folder.name)}</b>
         ${imp.needsPerm?`<button class="btn sm" data-act="scan-folder">${icon('lock')}Permitir acceso y buscar</button>`:`<button class="btn sec sm" data-act="scan-folder">${icon('refresh')}Buscar archivos nuevos</button>`}
         <button class="btn ghost sm" data-act="pick-folder">Cambiar carpeta</button>`
@@ -3497,17 +3615,17 @@ function renderChecks(){
   const today=todayYMD(), li=lastImportByAcc();
   const checks=[...S.checks.values()].sort((a,b)=>b.date.localeCompare(a.date)||b.createdAt.localeCompare(a.createdAt));
   const diffHtml=d=>d===0?`<span class="state ok">${icon('check-circle')}Cuadra</span>`:`<span class="state bad">${icon('x-circle')}${moneyS(d)}</span>`;
-  v.innerHTML=`<section><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Cuenta</th><th class="num">Saldo en la app hoy</th><th>Último control</th><th class="num">Saldo real</th><th>Diferencia</th><th class="num">Bluecoins</th><th>Última importación</th><th></th></tr></thead><tbody>
+  v.innerHTML=`<section><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Cuenta</th><th class="num">Saldo en la app hoy</th><th>Último control</th><th class="num">Saldo real</th><th>Diferencia</th><th class="num bc-only">Bluecoins</th><th>Última importación</th><th></th></tr></thead><tbody>
     ${accs.map(a=>{ const c=lastCheck(a.id), live=c&&checkLive(c), l=li.get(a.id);
       return `<tr><td>${esc(a.name)}</td><td class="num">${balHtml(balanceAt(a.id,today))}</td><td class="nowrap">${c?fmtDate(c.date):'<span class="faint">—</span>'}</td>
-      <td class="num">${c?money(c.realCents):''}</td><td>${c?diffHtml(live.diff):''}</td><td class="num">${c&&c.bluecoinsCents!=null?(live.bcDiff===0?`<span class="state ok">${icon('check')}</span>`:`<span class="state bad">${moneyS(live.bcDiff)}</span>`):''}</td>
+      <td class="num">${c?money(c.realCents):''}</td><td>${c?diffHtml(live.diff):''}</td><td class="num bc-only">${c&&c.bluecoinsCents!=null?(live.bcDiff===0?`<span class="state ok">${icon('check')}</span>`:`<span class="state bad">${moneyS(live.bcDiff)}</span>`):''}</td>
       <td class="nowrap">${l?`hace ${daysBetween(ymd(new Date(l.at)),today)} días`:'<span class="faint">Nunca</span>'}</td>
       <td><button class="btn sec sm" data-act="new-check" data-acc="${a.id}">${icon('plus')}Control</button></td></tr>`; }).join('')}
     </tbody></table></div></section>
-    ${checks.length?`<section class="view-sec"><div class="sec-head"><h2>Historial de controles</h2></div><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Fecha</th><th>Cuenta</th><th class="num">Saldo real</th><th class="num">Saldo en la app</th><th class="num">Bluecoins</th><th>Diferencia</th><th>Nota</th><th></th></tr></thead><tbody>
+    ${checks.length?`<section class="view-sec"><div class="sec-head"><h2>Historial de controles</h2></div><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Fecha</th><th>Cuenta</th><th class="num">Saldo real</th><th class="num">Saldo en la app</th><th class="num bc-only">Bluecoins</th><th>Diferencia</th><th>Nota</th><th></th></tr></thead><tbody>
       ${checks.map(c=>{ const live=checkLive(c), open=openCauses.has(c.id)&&live.diff!==0;
         return `<tr><td class="nowrap">${fmtDate(c.date)}</td><td>${esc(accName(c.accountId))}</td><td class="num">${money(c.realCents)}</td><td class="num">${money(live.app)}</td>
-        <td class="num">${c.bluecoinsCents==null?'':money(c.bluecoinsCents)}</td>
+        <td class="num bc-only">${c.bluecoinsCents==null?'':money(c.bluecoinsCents)}</td>
         <td>${live.diff===0?diffHtml(0):`<button class="btn ghost sm" data-act="toggle-causes" data-id="${c.id}" aria-expanded="${open}">${diffHtml(live.diff)}</button>`}</td>
         <td class="ellip">${esc(c.note)}</td><td><button class="btn ghost icon" data-act="del-check" data-id="${c.id}" aria-label="Eliminar el control">${icon('trash')}</button></td></tr>
         ${open?`<tr><td colspan="8"><b>${live.diff>0?'La app tiene '+money(live.diff)+' más que el banco':'A la app le faltan '+money(-live.diff)+' respecto al banco'}.</b> Posibles causas:
@@ -3551,9 +3669,9 @@ function renderAccounts(){
   if(!all.length){ v.innerHTML=`<div class="empty">${icon('wallet','ic')}<div>Aún no hay cuentas.</div><button class="btn" data-act="new-acc">${icon('plus')}Añadir cuenta</button></div>`; return; }
   const nArch=all.length-accSorted().length;
   v.innerHTML=`${nArch?`<div class="sec-head"><label class="chk"><input type="checkbox" id="showArch"${ui.showArchived?' checked':''}>Mostrar archivadas (${nArch})</label></div>`:''}
-    <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Nombre</th><th>Banco</th><th>Tipo</th><th>En Bluecoins</th><th>Apertura</th><th class="num">Saldo hoy</th><th class="num">Movimientos</th><th></th></tr></thead><tbody>
+    <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Nombre</th><th>Banco</th><th>Tipo</th><th class="bc-only">En Bluecoins</th><th>Apertura</th><th class="num">Saldo hoy</th><th class="num">Movimientos</th><th></th></tr></thead><tbody>
     ${list.map(a=>`<tr class="click" data-edit-acc="${a.id}"><td>${esc(a.name)} ${a.archived?`<span class="chip">${icon('archive','ic xs')}Archivada</span>`:''}</td><td>${esc(BANKS[a.bank])}</td><td>${esc(ACC_KINDS[a.kind])}</td>
-      <td>${a.bluecoins.name?esc(a.bluecoins.name)+(a.bluecoins.type?` <span class="faint">· ${esc(a.bluecoins.type)}</span>`:''):'<span class="chip warn">Sin indicar</span>'}</td>
+      <td class="bc-only">${a.bluecoins.name?esc(a.bluecoins.name)+(a.bluecoins.type?` <span class="faint">· ${esc(a.bluecoins.type)}</span>`:''):'<span class="chip warn">Sin indicar</span>'}</td>
       <td class="nowrap">${a.openingDate?fmtDate(a.openingDate)+' · '+money(a.openingCents):'<span class="chip warn">Sin fecha</span>'}</td>
       <td class="num">${balHtml(balanceAt(a.id,today))}</td><td class="num">${NF_INT.format(counts.get(a.id)||0)}</td>
       <td><button class="btn ghost icon" data-edit-acc="${a.id}" aria-label="Editar">${icon('pencil')}</button></td></tr>`).join('')}
@@ -3644,7 +3762,7 @@ function relabel(cs,from,to){
   return n;
 }
 async function newLabel(){
-  const r=await askFields('Nueva etiqueta',[{id:'name',label:'Nombre (igual que en Bluecoins)',max:60}]); if(!r) return;
+  const r=await askFields('Nueva etiqueta',[{id:'name',label:bcSame('Nombre'),max:60}]); if(!r) return;
   const name=cleanLabel(r.name); if(!name) return;
   if(allLabels().some(l=>normText(l)===normText(name))){ showToast('Ya existe esa etiqueta',{error:true}); return; }
   commit('Etiqueta añadida',cs=>cs.put('meta',{key:'labels',value:[...(getMeta('labels')||[]),name]}));
@@ -3662,21 +3780,21 @@ async function deleteLabel(l){
 }
 const catExists=(parent,name,except)=>[...S.categories.values()].some(c=>c.id!==except&&(c.parent||null)===(parent||null)&&c.name.trim().toLowerCase()===name.trim().toLowerCase());
 async function newParentCat(){
-  const r=await askFields('Nueva categoría principal',[{id:'kind',label:'Tipo',type:'select',value:'gasto',options:[['gasto','Gasto'],['ingreso','Ingreso']]},{id:'name',label:'Nombre (igual que en Bluecoins)',max:80}]);
+  const r=await askFields('Nueva categoría principal',[{id:'kind',label:'Tipo',type:'select',value:'gasto',options:[['gasto','Gasto'],['ingreso','Ingreso']]},{id:'name',label:bcSame('Nombre'),max:80}]);
   if(!r) return; const name=r.name.trim(); if(!name) return;
   if(catExists(null,name)){ showToast('Ya existe esa categoría',{error:true}); return; }
   commit('Categoría añadida',cs=>cs.put('categories',{id:uid(),parent:null,name,kind:r.kind}));
 }
 async function newChildCat(pid){
   const p=S.categories.get(pid); if(!p) return;
-  const r=await askFields('Nueva subcategoría de «'+p.name+'»',[{id:'name',label:'Nombre (igual que en Bluecoins)',max:80}]);
+  const r=await askFields('Nueva subcategoría de «'+p.name+'»',[{id:'name',label:bcSame('Nombre'),max:80}]);
   if(!r) return; const name=r.name.trim(); if(!name) return;
   if(catExists(pid,name)){ showToast('Ya existe esa subcategoría',{error:true}); return; }
   commit('Subcategoría añadida',cs=>cs.put('categories',{id:uid(),parent:pid,name,kind:p.kind}));
 }
 async function renameCat(id){
   const c=S.categories.get(id); if(!c) return;
-  const r=await askFields('Cambiar nombre',[{id:'name',label:'Nombre (igual que en Bluecoins)',value:c.name,max:80}]);
+  const r=await askFields('Cambiar nombre',[{id:'name',label:bcSame('Nombre'),value:c.name,max:80}]);
   if(!r) return; const name=r.name.trim(); if(!name||name===c.name) return;
   if(catExists(c.parent,name,id)){ showToast('Ya existe ese nombre',{error:true}); return; }
   commit('Nombre cambiado',cs=>cs.put('categories',{...clone(c),name}));
@@ -3723,6 +3841,31 @@ function renderSettings(){
       <p class="muted">Última copia: ${last?fmtDT(last):'nunca'} · ${NF_INT.format(S.movements.size)} movimientos, ${S.accounts.size} cuentas</p>
       <div class="set-row"><button class="btn" data-act="backup">${icon('download')}Exportar copia</button><button class="btn sec" data-act="restore">${icon('upload')}Restaurar copia…</button></div>
       <div class="set-row"><label class="fld" style="flex-direction:row;align-items:center;gap:8px">Recordar cada<input class="inp" type="number" min="1" max="90" id="backupDays" value="${ui.backupDays}" style="width:72px">días</label></div></div>
+    <div class="panel span2" id="syncPanel"><h2>Sincronizar con el móvil</h2>
+      <p class="sync-st${syncRt.status==='error'?' bad':''}" id="syncStatus" role="status">${esc(syncStatusText())}</p>
+      <div class="sync-fields">
+        <label class="fld">Token de GitHub<input class="inp" type="password" id="syncToken" autocomplete="off" spellcheck="false" placeholder="${syncCfg?'(guardado; escribe otro para cambiarlo)':'github_pat_…'}"></label>
+        <label class="fld">Contraseña de cifrado<input class="inp" type="password" id="syncPass" autocomplete="new-password" placeholder="${syncCfg?'(guardada; escribe otra para cambiarla)':'Mínimo 8 caracteres'}"></label>
+        <label class="fld">Repite la contraseña<input class="inp" type="password" id="syncPass2" autocomplete="new-password"></label>
+      </div>
+      <div class="set-row"><button class="btn" data-act="sync-on">${icon('cloud')}${syncCfg?'Guardar cambios':'Activar sincronización'}</button>
+        ${syncCfg?`<button class="btn sec" data-act="sync-now">${icon('refresh')}Sincronizar ahora</button><button class="btn sec danger-t" data-act="sync-off">Desactivar</button>`:''}</div>
+      <details class="sync-help"><summary>Cómo crear el token de GitHub</summary><ol>
+        <li>Si ya creaste uno para el <b>Revisor de Tareas</b>, sirve el mismo: pégalo y salta al último paso.</li>
+        <li>En el ordenador, entra en <b>github.com</b> e inicia sesión.</li>
+        <li>Pulsa tu <b>foto de perfil</b> (arriba a la derecha) → <b>Settings</b>.</li>
+        <li>En el menú de la izquierda, baja hasta el final y pulsa <b>Developer settings</b>.</li>
+        <li>Despliega <b>Personal access tokens</b> → <b>Fine-grained tokens</b> → botón verde <b>Generate new token</b>.</li>
+        <li><b>Token name</b>: «Finanzas sync». <b>Expiration</b>: <b>Custom</b> y una fecha dentro de un año (anótala: al caducar habrá que crear otro). <b>Repository access</b>: <b>Public repositories (read-only)</b>.</li>
+        <li>En <b>Permissions</b> pulsa <b>Add permissions</b> (o despliega <b>Account permissions</b>), marca <b>Gists</b> y elige <b>Read and write</b>. Ningún otro.</li>
+        <li>Pulsa <b>Generate token</b> y confirma. Copia el token (empieza por <code>github_pat_</code>): GitHub lo enseña una sola vez.</li>
+        <li>Pégalo arriba, escribe dos veces una contraseña de cifrado y pulsa <b>Activar sincronización</b>.</li>
+        <li>En el móvil repite solo el paso anterior, con <b>el mismo token y la misma contraseña</b>. Pásalos con un gestor de contraseñas, no por correo ni por chat.</li>
+      </ol></details></div>
+    <div class="panel"><h2>Bluecoins</h2>
+      <div class="set-row"><div class="seg" id="bcSeg" role="group" aria-label="Uso de Bluecoins">
+        <button type="button" data-bc="1" aria-pressed="${useBc()}">${icon('send')}Lo uso</button><button type="button" data-bc="0" aria-pressed="${!useBc()}">${icon('x')}No lo uso</button></div></div>
+      <p class="muted">${useBc()?'Se ven los nombres de Bluecoins, su saldo en los controles y qué está exportado.':'Se ocultan los campos y avisos de Bluecoins. Los datos se conservan por si vuelves a usarlo.'}</p></div>
     <div class="panel"><h2>Almacenamiento</h2><p class="muted" id="storageInfo">…</p>
       ${S.unreadable.length?`<p><span class="chip warn">${icon('alert','ic xs')}${S.unreadable.length} registros ilegibles guardados aparte</span></p><div class="set-row"><button class="btn sec sm" data-act="dl-unreadable">${icon('download')}Descargarlos</button></div>`:''}
       ${deferredPrompt?`<div class="set-row"><button class="btn sec" data-act="install">${icon('install')}Instalar la app</button></div>`:''}</div>
@@ -3767,7 +3910,7 @@ $('restoreInput').addEventListener('change',async e=>{
   const incoming={}, bad=[];
   for(const s of STORES){ incoming[s]=[]; for(const r of Array.isArray(data.stores[s])?data.stores[s]:[]){ const n=NORM[s](r); if(n&&!(s==='meta'&&META_NO_BACKUP.has(n.key))) incoming[s].push(n); else if(!n) bad.push({store:s,raw:r}); } }
   const ok=await askConfirm('Restaurar copia',`<p>Copia del <b>${fmtDT(data.exportedAt)}</b>: ${NF_INT.format(incoming.movements.length)} movimientos, ${incoming.accounts.length} cuentas, ${incoming.categories.length} categorías.</p>
-    <p>Sustituye todos los datos actuales (${NF_INT.format(S.movements.size)} movimientos, ${S.accounts.size} cuentas). Después podrás deshacerlo.</p>${bad.length?`<p class="muted">${bad.length} registros ilegibles se guardarán aparte.</p>`:''}`,'Restaurar');
+    <p>Sustituye todos los datos actuales (${NF_INT.format(S.movements.size)} movimientos, ${S.accounts.size} cuentas). Después podrás deshacerlo.</p>${syncCfg?'<p><b>La sincronización está activa:</b> los datos también se sustituirán en el otro dispositivo.</p>':''}${bad.length?`<p class="muted">${bad.length} registros ilegibles se guardarán aparte.</p>`:''}`,'Restaurar');
   if(!ok) return;
   await commit('Copia restaurada',cs=>{
     for(const s of STORES){
@@ -3778,9 +3921,301 @@ $('restoreInput').addEventListener('change',async e=>{
   });
 });
 
+/* ================= Sincronización entre dispositivos (Gist secreto de GitHub, cifrado) =================
+   Igual que en el Revisor de Tareas: los datos viajan cifrados (PBKDF2 600 000 + AES-GCM) a un Gist secreto de la cuenta
+   de GitHub de Carlos. En cada registro gana la versión cambiada más tarde y los borrados también se propagan.
+   El token y la contraseña solo se guardan en el dispositivo donde se escriben. */
+const SYNC_KEY='fin_sync', SYNC_FILE='finanzas-sync.json', SYNC_DESC='Finanzas · copia cifrada (no borrar ni editar)', SYNC_LOCK='fin_sync';
+const PBKDF2_ITER=600000, SYNC_AAD='finanzas-pc|1', SYNC_V=1, TOMB_DAYS=400;
+const tsOf=s=>{ const n=Date.parse(s); return isNaN(n)?0:n; };
+function syncErr(kind,msg){ const e=new Error(msg); e.kind=kind; return e; }
+/* Texto con las claves ordenadas: compara registros sin depender del orden de sus campos */
+const canonStr=v=>JSON.stringify(v,(k,x)=>x&&typeof x==='object'&&!Array.isArray(x)?Object.keys(x).sort().reduce((o,kk)=>(o[kk]=x[kk],o),{}):x);
+
+/* Lo que se sincroniza de este dispositivo, ya saneado. Si al sanear cambia algo, se guarda la versión saneada (repair). */
+function localSnapshot(){
+  const stores={}, repair=[];
+  for(const s of STORES){
+    const m=new Map();
+    for(const [k,r] of S[s]){
+      if(!syncable(s,k)) continue;
+      const n=NORM[s](clone(r)); if(!n) continue;
+      if(canonStr(n)!==canonStr(r)) repair.push({store:s,key:k,value:n});
+      m.set(k,n);
+    }
+    stores[s]=m;
+  }
+  return {stores,del:{...(getMeta(TOMB_KEY)||{})},repair};
+}
+/* Fusión registro a registro. Devuelve lo fusionado, los cambios que hay que aplicar aquí y si GitHub necesita la versión nueva. */
+function syncMerge(L,R){
+  const del={}, cut=Date.now()-TOMB_DAYS*86400000, local=[];
+  let toRemote=false;
+  for(const d of [L.del,R.del]) for(const k of Object.keys(d||{})) if(del[k]===undefined||tsOf(d[k])>tsOf(del[k])) del[k]=d[k];
+  const stores={};
+  for(const s of STORES){
+    const lm=L.stores[s]||new Map(), rm=R.stores[s]||new Map(), om=new Map();
+    for(const k of new Set([...lm.keys(),...rm.keys()])){
+      const a=lm.get(k), b=rm.get(k); let w, same=false;
+      if(!a) w=b; else if(!b) w=a;
+      else {
+        const ta=tsOf(a.updatedAt), tb=tsOf(b.updatedAt);
+        if(ta!==tb) w=ta>tb?a:b;
+        else { const ca=canonStr(a), cb=canonStr(b); same=ca===cb; w=ca>=cb?a:b; } /* empate: elección fija, igual en todos los dispositivos */
+      }
+      const dk=s+'|'+k;
+      if(del[dk]!==undefined){
+        if(tsOf(w.updatedAt)>tsOf(del[dk])) delete del[dk];
+        else { if(a) local.push({store:s,key:k,value:undefined}); if(b) toRemote=true; continue; }
+      }
+      om.set(k,w);
+      if(!same){
+        if(w!==a) local.push({store:s,key:k,value:w});
+        if(w!==b) toRemote=true;
+      }
+    }
+    stores[s]=om;
+  }
+  for(const k of Object.keys(del)) if(tsOf(del[k])<cut) delete del[k];
+  if(canonStr(del)!==canonStr(L.del||{})) local.push({store:'meta',key:TOMB_KEY,value:{key:TOMB_KEY,value:del}});
+  if(canonStr(del)!==canonStr(R.del||{})) toRemote=true;
+  return {stores,del,local,toRemote};
+}
+
+/* ---- Cifrado ---- */
+const te=new TextEncoder(), td=new TextDecoder();
+const b64e=u8=>{ let s=''; for(let i=0;i<u8.length;i+=0x8000) s+=String.fromCharCode.apply(null,u8.subarray(i,i+0x8000)); return btoa(s); };
+const b64d=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
+const keyCache={id:'',key:null};
+async function deriveKey(pass,salt,iter){
+  const id=pass+'|'+b64e(salt)+'|'+iter;
+  if(keyCache.id===id) return keyCache.key;
+  const base=await crypto.subtle.importKey('raw',te.encode(pass),'PBKDF2',false,['deriveKey']);
+  const key=await crypto.subtle.deriveKey({name:'PBKDF2',salt,iterations:iter,hash:'SHA-256'},base,{name:'AES-GCM',length:256},false,['encrypt','decrypt']);
+  keyCache.id=id; keyCache.key=key; return key;
+}
+async function pipeBytes(u8,stream){
+  const w=stream.writable.getWriter(); w.write(u8).catch(()=>{}); w.close().catch(()=>{});
+  return new Uint8Array(await new Response(stream.readable).arrayBuffer());
+}
+async function encryptPayload(m,saltB64,pass=syncCfg.pass){
+  const stores={}; for(const s of STORES) stores[s]=[...(m.stores[s]||new Map()).values()];
+  let bytes=te.encode(JSON.stringify({app:APP_ID,v:SYNC_V,savedAt:nowISO(),stores,del:m.del})), z=0;
+  if(typeof CompressionStream==='function'){ try{ bytes=await pipeBytes(bytes,new CompressionStream('gzip')); z=1; }catch(e){ z=0; } }
+  if(!z) bytes=te.encode(JSON.stringify({app:APP_ID,v:SYNC_V,savedAt:nowISO(),stores,del:m.del}));
+  const salt=saltB64?b64d(saltB64):crypto.getRandomValues(new Uint8Array(16)), iv=crypto.getRandomValues(new Uint8Array(12));
+  const key=await deriveKey(pass,salt,PBKDF2_ITER);
+  const ct=new Uint8Array(await crypto.subtle.encrypt({name:'AES-GCM',iv,additionalData:te.encode(SYNC_AAD)},key,bytes));
+  return JSON.stringify({app:APP_ID,v:SYNC_V,kdf:'PBKDF2-SHA256',iter:PBKDF2_ITER,salt:b64e(salt),iv:b64e(iv),z,data:b64e(ct)});
+}
+async function decryptPayload(text,pass=syncCfg.pass){
+  const bad=()=>syncErr('format','Los datos guardados en GitHub no tienen el formato esperado.');
+  let env; try{ env=JSON.parse(text); }catch(e){ throw bad(); }
+  if(!env||env.app!==APP_ID||!env.data||!env.salt||!env.iv) throw bad();
+  if(env.v!==SYNC_V) throw syncErr('version','Los datos de GitHub los guardó una versión más nueva de la app. Cierra la app y ábrela de nuevo para actualizarla.');
+  const key=await deriveKey(pass,b64d(env.salt),env.iter||PBKDF2_ITER);
+  let plain;
+  try{ plain=new Uint8Array(await crypto.subtle.decrypt({name:'AES-GCM',iv:b64d(env.iv),additionalData:te.encode(SYNC_AAD)},key,b64d(env.data))); }
+  catch(e){ throw syncErr('password','La contraseña de cifrado no coincide con la de los datos guardados en GitHub.'); }
+  if(env.z){
+    if(typeof DecompressionStream!=='function') throw syncErr('version','Este navegador no puede leer los datos comprimidos de GitHub. Actualiza Chrome.');
+    plain=await pipeBytes(plain,new DecompressionStream('gzip'));
+  }
+  let obj; try{ obj=JSON.parse(td.decode(plain)); }catch(e){ throw bad(); }
+  if(!obj||obj.app!==APP_ID||!obj.stores||typeof obj.stores!=='object') throw bad();
+  const stores={};
+  for(const s of STORES){
+    const m=new Map();
+    for(const r of Array.isArray(obj.stores[s])?obj.stores[s]:[]){ const n=NORM[s](r); if(!n) continue; const k=keyOf(s,n); if(syncable(s,k)) m.set(k,n); }
+    stores[s]=m;
+  }
+  const del={}; if(obj.del&&typeof obj.del==='object') for(const [k,v] of Object.entries(obj.del)) if(typeof v==='string'&&tsOf(v)) del[k]=v;
+  return {data:{stores,del},salt:env.salt};
+}
+
+/* ---- API de GitHub (Gists) ---- */
+async function gh(path,opts={}){
+  let res;
+  try{
+    res=await fetch('https://api.github.com'+path,{method:opts.method||'GET',cache:'no-store',
+      headers:Object.assign({Accept:'application/vnd.github+json',Authorization:'Bearer '+syncCfg.token},opts.body?{'Content-Type':'application/json'}:{}),
+      body:opts.body?JSON.stringify(opts.body):undefined});
+  }catch(e){ throw syncErr('network','No se ha podido conectar con GitHub.'); }
+  if(res.ok) return res;
+  if(res.status===401) throw syncErr('token','El token de GitHub no es válido o ha caducado.');
+  if(res.status===403||res.status===429){
+    if(res.status===429||res.headers.get('x-ratelimit-remaining')==='0') throw syncErr('limit','GitHub ha limitado las peticiones por un rato. Se reintentará solo.');
+    throw syncErr('perm','El token no tiene permiso para los Gists. Créalo de nuevo con «Gists: Read and write».');
+  }
+  if(res.status===404) throw syncErr('notfound','No se encuentra el Gist de sincronización.');
+  throw syncErr('http','GitHub ha respondido con un error ('+res.status+').');
+}
+/* El Gist de la app en la cuenta; si hay varios, el más antiguo (así todos los dispositivos eligen el mismo) */
+async function findGist(){
+  let best=null;
+  for(let page=1;page<=10;page++){
+    const list=await (await gh(`/gists?per_page=100&page=${page}`)).json();
+    for(const g of list) if(g.files&&g.files[SYNC_FILE]&&(!best||tsOf(g.created_at)<tsOf(best.created_at))) best=g;
+    if(list.length<100) break;
+  }
+  return best?best.id:'';
+}
+async function readGist(id){
+  const g=await (await gh('/gists/'+encodeURIComponent(id))).json(), f=g.files&&g.files[SYNC_FILE];
+  if(!f) return null;
+  if(f.truncated||typeof f.content!=='string'){ /* más de 1 MB: GitHub da el contenido completo aparte */
+    let r; try{ r=await fetch(f.raw_url,{cache:'no-store'}); }catch(e){ throw syncErr('network','No se ha podido conectar con GitHub.'); }
+    if(!r.ok) throw syncErr('http','GitHub ha respondido con un error ('+r.status+').');
+    return r.text();
+  }
+  return f.content;
+}
+async function writeGist(id,content){
+  if(id){ await gh('/gists/'+encodeURIComponent(id),{method:'PATCH',body:{files:{[SYNC_FILE]:{content}}}}); return id; }
+  const g=await (await gh('/gists',{method:'POST',body:{description:SYNC_DESC,public:false,files:{[SYNC_FILE]:{content}}}})).json();
+  return g.id;
+}
+
+/* ---- Ajustes de este dispositivo (solo en su localStorage) ---- */
+function loadSyncCfg(){
+  try{ const c=JSON.parse(localStorage.getItem(SYNC_KEY)); if(c&&typeof c==='object'&&c.token&&c.pass) return {token:String(c.token),pass:String(c.pass),gistId:String(c.gistId||''),lastSync:tsOf(c.lastSync)?c.lastSync:''}; }catch(e){}
+  return null;
+}
+let syncCfg=loadSyncCfg();
+function saveSyncCfg(){ try{ if(syncCfg) localStorage.setItem(SYNC_KEY,JSON.stringify(syncCfg)); else localStorage.removeItem(SYNC_KEY); }catch(e){} }
+const syncRt={busy:false,pending:false,dirty:false,timer:null,status:syncCfg?'ok':'off',err:null,halt:'',toastKind:'',renderPending:false};
+
+async function syncApply(entries){
+  if(!entries.length) return;
+  const prev=entries.map(e=>({store:e.store,key:e.key,value:clone(S[e.store].get(e.key))}));
+  applyMem(entries);
+  try{ await persistEntries(entries.map(e=>({...e,value:clone(e.value)}))); }
+  catch(e){ applyMem(prev); throw syncErr('save','No se han podido guardar en este dispositivo los datos recibidos ('+(e&&e.message||'error')+').'); }
+  undoStack.length=0; broadcast(); renderSoon();
+}
+/* Repinta con lo recibido, salvo que haya una ventana abierta (se repinta al cerrarla) */
+function renderSoon(){ if(document.querySelector('dialog[open]')) syncRt.renderPending=true; else { syncRt.renderPending=false; render(); } }
+document.addEventListener('close',e=>{ if(e.target.tagName==='DIALOG'&&syncRt.renderPending) setTimeout(()=>{ if(!document.querySelector('dialog[open]')&&syncRt.renderPending){ syncRt.renderPending=false; render(); } },0); },true);
+
+async function syncCycle(){
+  if(!syncCfg.gistId){ syncCfg.gistId=await findGist(); saveSyncCfg(); }
+  let remote=null, salt='';
+  if(syncCfg.gistId){
+    let text=null;
+    try{ text=await readGist(syncCfg.gistId); }
+    catch(e){ if(e.kind==='notfound'){ syncCfg.gistId=''; saveSyncCfg(); } else throw e; }
+    if(text){ const r=await decryptPayload(text); remote=r.data; salt=r.salt; }
+  }
+  /* Desde aquí hasta aplicar la fusión no hay esperas: se usa el estado de este mismo instante */
+  syncRt.dirty=false;
+  const local=localSnapshot(), m=syncMerge(local,remote||{stores:{},del:{}});
+  await syncApply([...local.repair,...m.local]);
+  if(!remote||m.toRemote) syncCfg.gistId=await writeGist(syncCfg.gistId,await encryptPayload(m,salt));
+  return m;
+}
+async function syncNow(opts={}){
+  if(!syncCfg) return {ok:false};
+  if(syncRt.busy){ syncRt.pending=true; return {ok:false,busy:true}; }
+  if(syncRt.halt&&!opts.force) return {ok:false};
+  clearTimeout(syncRt.timer);
+  syncRt.busy=true; syncRt.halt=''; setSyncStatus('syncing');
+  let res={ok:true};
+  try{
+    const run=()=>syncCycle();
+    if(navigator.locks&&navigator.locks.request) await navigator.locks.request(SYNC_LOCK,run); else await run();
+    syncCfg.lastSync=nowISO(); saveSyncCfg(); syncRt.err=null; syncRt.toastKind='';
+    setSyncStatus('ok');
+  }catch(e){ res={ok:false,err:e}; if(syncCfg) handleSyncError(e,opts.quiet); }
+  finally{ syncRt.busy=false; if(syncRt.pending||syncRt.dirty){ syncRt.pending=false; if(!syncRt.halt) scheduleSync(3000); } }
+  return res;
+}
+function scheduleSync(delay=4000){
+  if(!syncCfg||syncRt.halt) return;
+  clearTimeout(syncRt.timer); syncRt.timer=setTimeout(()=>syncNow(),delay);
+}
+function syncDirty(){ if(!syncCfg) return; syncRt.dirty=true; scheduleSync(4000); }
+function handleSyncError(e,quiet){
+  const known=e&&e.kind, kind=known||'unknown', msg=known?e.message:'Ha ocurrido un error inesperado al sincronizar.';
+  if(!known) console.error(e);
+  syncRt.err={kind,msg};
+  if(['token','password','perm','version','format'].includes(kind)) syncRt.halt=kind;
+  setSyncStatus('error');
+  if(!quiet&&kind!=='network'&&kind!=='limit'&&syncRt.toastKind!==kind){
+    syncRt.toastKind=kind;
+    showToast(msg+(syncRt.halt?' La sincronización está en pausa.':''),{error:true,action:'Ver ajustes',fn:()=>go('ajustes'),timeout:20000});
+  }
+}
+function syncStatusText(){
+  if(!syncCfg) return 'Desactivada en este dispositivo.';
+  if(syncRt.status==='syncing') return 'Sincronizando…';
+  if(syncRt.status==='error'&&syncRt.err) return syncRt.err.msg+(syncRt.halt?' Sincronización en pausa: corrígelo y pulsa «Sincronizar ahora».':' Se reintentará.');
+  return 'Activa.'+(syncCfg.lastSync?' Última vez: '+fmtDT(syncCfg.lastSync)+'.':'');
+}
+function setSyncStatus(st){
+  syncRt.status=st;
+  document.body.classList.toggle('sync-error',st==='error'&&!!syncRt.halt);
+  const el=$('syncStatus');
+  if(el){ el.textContent=syncStatusText(); el.classList.toggle('bad',st==='error'); for(const b of document.querySelectorAll('[data-act^="sync-"]')) b.disabled=syncRt.busy; }
+  renderSideNotes();
+}
+async function activateSync(){
+  const prev=syncCfg, token=$('syncToken').value.trim()||(prev?prev.token:''), p1=$('syncPass').value, p2=$('syncPass2').value;
+  if(!token){ showToast('Pega el token de GitHub (empieza por github_pat_)',{error:true}); $('syncToken').focus(); return; }
+  if(!prev||p1||p2){
+    if(p1.length<8){ showToast('La contraseña de cifrado debe tener al menos 8 caracteres',{error:true}); $('syncPass').focus(); return; }
+    if(p1!==p2){ showToast('Las dos contraseñas no coinciden',{error:true}); $('syncPass2').focus(); return; }
+  }
+  const pass=(p1||(prev?prev.pass:'')).normalize('NFC');
+  const sameAccount=prev&&prev.token===token;
+  syncCfg={token,pass,gistId:sameAccount?prev.gistId:'',lastSync:''};
+  keyCache.id=''; syncRt.halt='';
+  let r=await syncNow({force:true,quiet:true});
+  if(!r.ok&&r.err&&r.err.kind==='password'&&syncCfg.gistId&&await askConfirm('La contraseña no coincide',
+    `<p>La contraseña no coincide con la de los datos que ya hay en GitHub.</p><p>Si te equivocaste al crearla la primera vez, puedes <b>sustituir</b> esa copia por los datos de <b>este dispositivo</b>. Se perderá lo que solo estuviera en esa copia.</p>`,'Sustituir la copia de GitHub',true)){
+    try{ const snap=localSnapshot(); await syncApply(snap.repair); syncCfg.gistId=await writeGist(syncCfg.gistId,await encryptPayload(snap,'')); syncCfg.lastSync=nowISO(); saveSyncCfg(); syncRt.err=null; syncRt.halt=''; setSyncStatus('ok'); r={ok:true}; }
+    catch(e){ r={ok:false,err:e}; }
+  }
+  if(r.ok){ showToast('Sincronización activada'); if(ui.view==='ajustes') renderSettings(); }
+  else {
+    syncCfg=prev; saveSyncCfg(); syncRt.err=null; syncRt.halt=''; setSyncStatus(prev?'ok':'off');
+    const e=r.err; showToast((e&&e.kind?e.message:'No se ha podido activar la sincronización.')+(e&&e.kind==='token'?' Revisa que has copiado el token entero.':''),{error:true,timeout:15000});
+  }
+}
+async function disableSync(){
+  if(!await askConfirm('Desactivar la sincronización','<p>Se borrarán el token y la contraseña de este dispositivo y dejará de sincronizar.</p><p>Tus datos de este dispositivo y la copia cifrada de GitHub no se tocan.</p>','Desactivar',true)) return;
+  clearTimeout(syncRt.timer); syncCfg=null; saveSyncCfg(); syncRt.err=null; syncRt.halt=''; keyCache.id=''; setSyncStatus('off'); renderSettings();
+}
+setInterval(()=>{ if(syncCfg&&!document.hidden) syncNow({quiet:true}); },180000);
+document.addEventListener('visibilitychange',()=>{
+  if(!syncCfg) return;
+  if(document.hidden){ if(syncRt.dirty) syncNow({quiet:true}); }   /* al salir de la app, se envía lo pendiente */
+  else if(Date.now()-tsOf(syncCfg.lastSync)>60000) syncNow({quiet:true});
+});
+
 /* ================= Vista: Instrucciones ================= */
 function renderHelp(){
   $('view').innerHTML=`<div class="doc">
+  <h2>Instalar la app en el móvil (Android)</h2>
+  <ol><li>En el móvil, abre <b>Chrome</b> y entra en <span class="path">carlosmera10.github.io/finanzas-pc</span>.</li>
+  <li>Pulsa los <b>tres puntos</b> de arriba a la derecha → <b>Añadir a pantalla de inicio</b> → <b>Instalar</b>. En algunas versiones de Chrome la opción se llama <b>Instalar aplicación</b>. Si en el menú lateral de la app aparece <b>Instalar la app</b>, también sirve.</li>
+  <li>Abre <b>Finanzas</b> desde el icono de la pantalla de inicio. Al principio está vacía: cada dispositivo guarda sus propios datos.</li>
+  <li>Para tener lo mismo que en el PC, activa la sincronización (siguiente apartado).</li></ol>
+
+  <h2>Sincronizar el PC y el móvil</h2>
+  <ol><li>En el <b>PC</b>: <span class="path">Ajustes → Sincronizar con el móvil</span>. Pega el token de GitHub, escribe dos veces una contraseña de cifrado y pulsa <b>Activar sincronización</b>. Debajo está <b>Cómo crear el token de GitHub</b>, paso a paso (si ya tienes el del Revisor de Tareas, sirve el mismo).</li>
+  <li>En el <b>móvil</b>: <b>Más</b> (abajo a la derecha) → <span class="path">Ajustes → Sincronizar con el móvil</span>, con <b>el mismo token y la misma contraseña</b> → <b>Activar sincronización</b>. La primera vez trae todos los datos del PC y tarda unos segundos.</li>
+  <li>Desde entonces se sincroniza sola: al abrir la app, unos segundos después de cada cambio, al salir de la app y cada pocos minutos. También con <b>Sincronizar ahora</b>.</li>
+  <li>Los datos viajan <b>cifrados</b> a un Gist secreto de tu cuenta de GitHub: sin la contraseña no se pueden leer. El token y la contraseña solo se guardan en el dispositivo donde los escribes. Si pierdes la contraseña, la copia de GitHub no se puede recuperar, pero los datos de cada dispositivo siguen intactos.</li>
+  <li>En cada movimiento, cuenta, regla o presupuesto gana el cambio <b>más reciente</b>, y lo que borras en un dispositivo se borra también en el otro.</li>
+  <li>No se sincronizan la carpeta de importación ni la fecha de la última copia de seguridad, que son de cada dispositivo.</li>
+  <li>Si aparece <b>Sincronización en pausa</b> en el menú (o un punto rojo en <b>Más</b>), entra en <span class="path">Ajustes</span> para ver el motivo: token caducado, contraseña distinta…</li></ol>
+
+  <h2>Usar la app en el móvil</h2>
+  <ul><li>Barra de abajo: <b>Resumen</b>, <b>Movimientos</b>, el botón <b>+</b> para apuntar un movimiento, <b>Estadísticas</b> y <b>Más</b>, que abre el menú con el resto de apartados.</li>
+  <li>En <span class="path">Movimientos</span>, el botón <b>Filtros</b> muestra u oculta los filtros. Pulsa un movimiento para abrirlo.</li>
+  <li>Para importar un archivo del banco descargado en el móvil: <span class="path">Más → Importar → Elegir archivos</span> y elige el archivo (normalmente en <b>Descargas</b>). La carpeta de importación solo existe en el PC.</li>
+  <li>Si apuntas un gasto a mano en el móvil y después importas el archivo del banco, el del banco sustituye al tuyo y conserva tu categoría, beneficiario y etiquetas.</li></ul>
+
   <h2>Atajos de teclado</h2>
   <table><tr><td><kbd>Alt</kbd>+<kbd>1</kbd>…<kbd>9</kbd></td><td>Ir a los nueve primeros apartados del menú (de Resumen a Categorías)</td></tr>
   <tr><td><kbd>N</kbd></td><td>Nuevo movimiento</td></tr>
@@ -3791,7 +4226,7 @@ function renderHelp(){
 
   <h2>Primeros pasos</h2>
   <ol><li>En <span class="path">Cuentas → Nueva cuenta</span>, da de alta cada cuenta con su <b>saldo de apertura</b> y la <b>fecha</b> de ese saldo (el saldo justo antes del primer movimiento que vayas a cargar).</li>
-  <li>En <b>Nombre en Bluecoins</b> y <b>Tipo en Bluecoins</b> escribe exactamente lo que aparece en Bluecoins: si no coincide, Bluecoins rechaza la fila.</li>
+  <li class="bc-only">En <b>Nombre en Bluecoins</b> y <b>Tipo en Bluecoins</b> escribe exactamente lo que aparece en Bluecoins: si no coincide, Bluecoins rechaza la fila.</li>
   <li>En <span class="path">Categorías → Pegar lista</span> copia tus categorías de Bluecoins, una por línea: <i>Padre &gt; Subcategoría</i>.</li></ol>
 
   <h2>Qué cuentas se suman</h2>
@@ -3844,7 +4279,7 @@ function renderHelp(){
   <li>Cuando hay posibles extraordinarios aparece un aviso en <span class="path">Presupuestos</span> y en <span class="path">Presupuestos → Proponer presupuestos</span>. Pulsa <b>Revisar</b>: deja marcados los que lo son y pulsa <b>Guardar</b>. Los que desmarques no se vuelven a proponer.</li>
   <li><b>A mano:</b> abre el movimiento y marca <b>Extraordinario (fuera de presupuestos)</b>. También sirve para un ingreso puntual, que así no sube el «Ingreso medio». Para varios a la vez, selecciónalos en <span class="path">Movimientos</span> y pulsa <b>Extraordinarios</b> (o <b>No extraordinarios</b> para quitarlo).</li>
   <li>Para verlos: <span class="path">Movimientos → Estado → Extraordinarios</span> (o <b>Posibles extraordinarios</b>). Llevan el icono del rayo. En la tarjeta <b>Total del mes</b> aparece lo gastado como extraordinario ese mes, con enlace a esos movimientos.</li>
-  <li>La marca no se exporta a Bluecoins ni cambia nada allí.</li></ol>
+  <li class="bc-only">La marca no se exporta a Bluecoins ni cambia nada allí.</li></ol>
 
   <h2>Carpeta de importación</h2>
   <ol><li>Crea una carpeta solo para las descargas del banco, por ejemplo <span class="path">Documentos\\Bancos\\Entrada</span>. No uses la carpeta Descargas entera.</li>
@@ -3852,7 +4287,7 @@ function renderHelp(){
   <li>Guarda ahí los archivos que descargues del banco y pulsa <b>Buscar archivos nuevos</b>: solo se leen los que no se han importado ya.</li></ol>
 
   <h2>Copias de seguridad</h2>
-  <p>Los datos están solo en este ordenador. En <span class="path">Ajustes → Exportar copia</span> se descarga un archivo con todo; guárdalo fuera del PC (por ejemplo, en tu Google Drive). Para recuperarlo: <span class="path">Ajustes → Restaurar copia…</span></p>
+  <p>Los datos están en cada dispositivo (y, si activas la sincronización, cifrados en tu GitHub). En <span class="path">Ajustes → Exportar copia</span> se descarga un archivo con todo; guárdalo fuera del PC (por ejemplo, en tu Google Drive). Para recuperarlo: <span class="path">Ajustes → Restaurar copia…</span></p>
   <p><b>No uses</b> la opción de Chrome «Borrar datos del sitio»: borraría también las demás apps de carlosmera10.github.io.</p>
 
   <h2>Importar un archivo del banco</h2>
@@ -3874,9 +4309,9 @@ function renderHelp(){
   <li><b>Solo en Bluecoins</b> (en fechas que ya cubre el banco): se listan aparte y solo se añaden si marcas la casilla.</li>
   <li>Las cuentas que no existen se crean con su saldo de Bluecoins. Las hipotecas no cuentan en ingresos y gastos (se puede cambiar en la cuenta).</li></ul>
 
-  <h2>Tarjetas de BBVA y Bluecoins</h2>
+  <div class="bc-only"><h2>Tarjetas de BBVA y Bluecoins</h2>
   <p>BBVA cobra las compras de la tarjeta una vez al mes («Adeudo mensual de tarjeta» en la cuenta y «Recibo mes anterior» en la tarjeta). Por eso cada tarjeta es una cuenta propia, de tipo <b>Tarjeta de crédito</b>, con <b>Se carga en la cuenta: BBVA</b>: las compras son los gastos reales y el cargo mensual es una transferencia de BBVA a la tarjeta, que no cuenta como gasto.</p>
-  <p>Si en Bluecoins apuntas las compras de la tarjeta en la cuenta BBVA, pon <b>BBVA</b> en <b>Nombre en Bluecoins</b> de cada tarjeta: así se exportan a esa cuenta y el cargo mensual no se exporta.</p>
+  <p>Si en Bluecoins apuntas las compras de la tarjeta en la cuenta BBVA, pon <b>BBVA</b> en <b>Nombre en Bluecoins</b> de cada tarjeta: así se exportan a esa cuenta y el cargo mensual no se exporta.</p></div>
 
   <h2>Etiquetas</h2>
   <p>Pueden llevar espacios y emojis, como en Bluecoins. Al escribir en un campo de etiquetas salen las que ya existen: elige una con las flechas e <kbd>Intro</kbd>, o escribe una nueva y pulsa <kbd>Intro</kbd> o la coma. <kbd>Retroceso</kbd> con el campo vacío quita la última.</p>
@@ -3891,8 +4326,10 @@ function renderHelp(){
   <h2>Descargar los movimientos de cada banco</h2>
   <p class="muted">Pendiente: pasos exactos de la web o la app de cada banco.</p>
 
-  <h2>Pasar los movimientos a Bluecoins</h2>
-  <p class="muted">Pendiente: se completará cuando esté probado el formato con la importación de calibración.</p>
+  <div class="bc-only"><h2>Pasar los movimientos a Bluecoins</h2>
+  <p class="muted">Pendiente: se completará cuando esté probado el formato con la importación de calibración.</p></div>
+  <h2>Usar o no Bluecoins</h2>
+  <p>En <span class="path">Ajustes → Bluecoins</span> elige <b>Lo uso</b> o <b>No lo uso</b>. Con <b>No lo uso</b> se ocultan los nombres de Bluecoins de las cuentas, su saldo en los controles, el estado «Exportado a Bluecoins» y sus avisos. No se borra nada: si vuelves a <b>Lo uso</b>, todo sigue ahí. El historial de Bluecoins se puede importar igualmente.</p>
   </div>`;
 }
 
@@ -3901,6 +4338,13 @@ $('nav').addEventListener('click',e=>{ const b=e.target.closest('.nav-btn'); if(
 $('menuBtn').addEventListener('click',()=>document.body.classList.toggle('drawer-open'));
 $('drawerBg').addEventListener('click',()=>document.body.classList.remove('drawer-open'));
 $('backupNote').addEventListener('click',()=>go('ajustes'));
+$('syncNote').addEventListener('click',()=>go('ajustes'));
+$('bottomNav').addEventListener('click',e=>{
+  const b=e.target.closest('button'); if(!b) return;
+  if(b.id==='bnNew'){ document.body.classList.remove('drawer-open'); openMovDialog(null); return; }
+  if(b.id==='bnMore'){ document.body.classList.toggle('drawer-open'); return; }
+  if(b.dataset.bn) go(b.dataset.bn);
+});
 document.addEventListener('click',async e=>{
   const t=e.target;
   const act=t.closest('[data-act]');
@@ -3912,6 +4356,7 @@ document.addEventListener('click',async e=>{
       case 'new-mov': openMovDialog(null); return;
       case 'new-check': openCheckDialog(act.dataset.acc); return;
       case 'export-csv': exportFilterCsv(); return;
+      case 'toggle-filters': ui.mfOpen=!ui.mfOpen; saveUI(); renderMovs(); return;
       case 'clear-filters': Object.assign(ui.mf,{acc:'',from:'',to:'',cat:'',label:'',state:'',q:'',page:0}); saveUI(); renderMovs(); return;
       case 'page-prev': ui.mf.page=Math.max(0,ui.mf.page-1); saveUI(); renderMovs(); $('view').querySelector('.tbl-wrap.tall')?.scrollTo(0,0); return;
       case 'page-next': ui.mf.page++; saveUI(); renderMovs(); $('view').querySelector('.tbl-wrap.tall')?.scrollTo(0,0); return;
@@ -3936,7 +4381,7 @@ document.addEventListener('click',async e=>{
       case 'bulk-extra': case 'bulk-noextra': setExtra([...selMov],a==='bulk-extra').then(ok=>{ if(!ok) showToast('No había nada que cambiar'); }); return;
       case 'bulk-rev': commit('',cs=>{ let n=0; for(const id of selMov){ const m=S.movements.get(id); if(m&&!m.reviewed){ cs.put('movements',{...clone(m),reviewed:true}); n++; } } return n?`${n} marcados como revisados`:false; }); return;
       case 'bulk-del': {
-        const ids=[...selMov], exp=ids.filter(id=>S.movements.get(id)?.exportId).length;
+        const ids=[...selMov], exp=useBc()?ids.filter(id=>S.movements.get(id)?.exportId).length:0;
         if(!await askConfirm('Eliminar movimientos',`<p>Se eliminarán ${ids.length} movimientos.${exp?` ${exp} ya se exportaron a Bluecoins: tendrás que borrarlos también allí.`:''} Podrás deshacerlo.</p>`,'Eliminar',true)) return;
         deleteMovements(ids); return; }
       case 'pick-files': $('fileInput').click(); return;
@@ -3993,6 +4438,9 @@ document.addEventListener('click',async e=>{
       case 'restore': $('restoreInput').click(); return;
       case 'dl-unreadable': download(JSON.stringify(S.unreadable,null,1),`finanzas-ilegibles-${stamp()}.json`,'application/json'); return;
       case 'install': installApp(); return;
+      case 'sync-on': activateSync(); return;
+      case 'sync-now': syncNow({force:true}).then(r=>{ if(r.ok) showToast('Sincronizado'); }); return;
+      case 'sync-off': disableSync(); return;
     }
     return;
   }
@@ -4009,6 +4457,7 @@ document.addEventListener('click',async e=>{
   const sq=t.closest('tr[data-st-q]'); if(sq){ const [f,to]=periodRange(ui.st.period,ui.st.from,ui.st.to); Object.assign(ui.mf,{acc:'',from:f,to,cat:'',label:ui.st.label||'',state:'',q:sq.dataset.stQ,page:0}); saveUI(); go('movimientos'); return; }
   const bmd=t.closest('[data-bal-mode]'); if(bmd){ ui.bal.mode=bmd.dataset.balMode; saveUI(); renderBalance(); return; }
   const fi=t.closest('[data-file]'); if(fi){ imp.sel=+fi.dataset.file; imp.sheet=0; renderImport(); return; }
+  const bcb=t.closest('#bcSeg button[data-bc]'); if(bcb){ const on=bcb.dataset.bc==='1'; if(on!==useBc()){ await setMeta('useBluecoins',on); render(); } return; }
   const th=t.closest('#themeSeg button[data-theme]'); if(th){ ui.theme=th.dataset.theme; saveUI(); applyTheme(); renderSettings(); return; }
 });
 let searchTimer=null;
@@ -4073,6 +4522,7 @@ async function boot(){
   }
   render();
   if(getMeta('importFolder')) scanFolder(false);
+  if(syncCfg) syncNow();
 }
 boot();
 
@@ -4082,6 +4532,7 @@ window.__fin={S,ui,parseAmount,centsToPlain,centsToComma,parseDateCell,excelSeri
   normText,fingerprint,normMovement,normAccount,normCategory,parseCatLines,balancesAt,balanceAt,flowsBetween,causesFor,
   bluecoinsCsv,movementsToBluecoinsRows,BC_HEADER,commit,undo,backupData,go,ready:()=>!!db,
   readBiff,readCfbStream,rkValue,IMPORTERS,analyzeFile,chainCheck,findHeader,hdrNorm,guessAccount,classifyRow,buildReview,confirmImport,undoImport,
+  syncMerge,localSnapshot,syncNow,encryptPayload,decryptPayload,canonStr,useBc,syncState:()=>({cfg:syncCfg,status:syncRt.status,err:syncRt.err,halt:syncRt.halt,dirty:syncRt.dirty,busy:syncRt.busy}),
   ruleMatches,matchRule,predictMovement,learnFromConcept,dupCandidates,isDup,cardInfo,availableAt,flows,totals,scopeIds,periodRange,insightsFor,budgets,budgetSpent,statsOf,budFlows,extraSuggestions,setExtra,balanceHist,openScopeDialog,applyRulesToFree,bcPlan,confirmBcImport,catLabel,findCounterpart,suggestRuleText,normRule,imp,splitLabels,normLabels,mergeLabels,allLabels};
 </script>
 </body>

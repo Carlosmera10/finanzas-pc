@@ -542,7 +542,7 @@ def flujo_estrecho(browser, estado):
     # Cargar los mismos datos para ver las vistas llenas
     p.evaluate("""(d) => window.__fin.commit('', cs => { for (const s of Object.keys(d.stores)) for (const r of d.stores[s]) cs.put(s, r); }, {noUndo:true})""", estado)
     for v in ["resumen", "estadisticas", "balance", "presupuestos", "movimientos", "importar", "controles", "cuentas", "categorias", "reglas", "ajustes", "instrucciones"]:
-        p.click("#menuBtn")
+        p.click("#bnMore")
         p.click(f".nav-btn[data-view={v}]")
         p.wait_for_timeout(250)
         sin_desborde(p, "Estrecha " + v)

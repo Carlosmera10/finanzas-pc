@@ -1,21 +1,26 @@
 # Finanzas
 
-App de escritorio (PWA para Chrome) que complementa a **Bluecoins** en Android: importa los movimientos que se descargan de los bancos, permite revisarlos y categorizarlos, controla que los saldos cuadren con el banco y prepara la exportación a Bluecoins.
+App de finanzas (PWA para Chrome en el PC y en el móvil Android), que puede usarse junto a **Bluecoins** o sin él: importa los movimientos que se descargan de los bancos, permite revisarlos y categorizarlos, controla que los saldos cuadren con el banco y prepara la exportación a Bluecoins.
 
 **Dirección:** https://carlosmera10.github.io/finanzas-pc/
 
 ## Privacidad
 
 - Este repositorio es **público** y solo contiene código.
-- Los datos financieros se guardan **solo en el ordenador** (IndexedDB del navegador) y en las copias de seguridad que se descarguen desde **Ajustes → Exportar copia**.
+- Los datos financieros se guardan **en cada dispositivo** (IndexedDB del navegador), en las copias de seguridad que se descarguen desde **Ajustes → Exportar copia** y, si se activa la sincronización, **cifrados** (PBKDF2 600 000 + AES-GCM) en un Gist secreto de la cuenta de GitHub del usuario. El token y la contraseña solo se guardan en el dispositivo donde se escriben.
 - Los archivos reales de los bancos nunca se suben aquí. Las pruebas usan archivos **sintéticos** con datos inventados (`pruebas/sinteticos/`).
 
 ## Instalar la app
 
-1. Abre la dirección en **Chrome** en el PC.
-2. Pulsa **Instalar la app** en la parte inferior del menú lateral (o el icono de instalar de la barra de direcciones de Chrome).
+- **PC:** abre la dirección en **Chrome** y pulsa **Instalar la app** en la parte inferior del menú lateral (o el icono de instalar de la barra de direcciones).
+- **Android:** abre la dirección en **Chrome** → **tres puntos** (arriba a la derecha) → **Añadir a pantalla de inicio** → **Instalar** (en algunas versiones, **Instalar aplicación**).
+- Para tener los mismos datos en los dos: **Ajustes → Sincronizar con el móvil**, con el mismo token de GitHub y la misma contraseña en cada dispositivo.
 
 ## Qué hace (versión actual)
+
+- **Móvil:** barra inferior (Resumen, Movimientos, botón **+**, Estadísticas y Más), movimientos en tarjetas, filtros plegables y ventanas a pantalla completa.
+- **Sincronización PC ↔ móvil:** en cada registro gana el cambio más reciente y los borrados se propagan; al abrir, tras cada cambio, al salir y cada pocos minutos.
+- **Bluecoins opcional:** en Ajustes, «Lo uso» o «No lo uso» (oculta lo propio de Bluecoins sin borrar nada).
 
 - **Cuentas:** alta con saldo de apertura, identificadores para reconocer sus archivos y nombre y tipo exactos en Bluecoins.
 - **Categorías:** las mismas de Bluecoins (principal y subcategoría); se pueden pegar en lista.
@@ -51,8 +56,9 @@ App de escritorio (PWA para Chrome) que complementa a **Bluecoins** en Android: 
 | `app.webmanifest`, `icon-*.png` | Instalación como app |
 | `pruebas/generar_sinteticos.py` | Crea los archivos de prueba inventados |
 | `pruebas/test_app.py` | Pruebas con Playwright (PC 1440×900 y ventana estrecha 361×780) |
+| `pruebas/test_movil_sync.py` | Pruebas del móvil Android (412×915, táctil) y de la sincronización, con GitHub simulado |
 
-Todo lo que guarda la app usa el prefijo `fin` (`fin_db`, `fin_ui`, `fin_tabs`), para no mezclarse con las demás apps de `carlosmera10.github.io`.
+Todo lo que guarda la app usa el prefijo `fin` (`fin_db`, `fin_ui`, `fin_tabs`, `fin_sync`, Gist `finanzas-sync.json`), para no mezclarse con las demás apps de `carlosmera10.github.io`.
 
 ## Pruebas
 
