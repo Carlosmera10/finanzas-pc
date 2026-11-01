@@ -3296,7 +3296,7 @@ function renderImport(){
   const touch=matchMedia('(pointer:coarse)').matches;
   v.innerHTML=`<div class="drop" id="dropZone">${icon('file-in','ic')}<span>${touch?'Elige los archivos descargados del banco':'Arrastra aquí los archivos del banco'}</span>
       <button class="btn sec" data-act="pick-files">${icon('file')}Elegir archivos</button></div>
-    <div class="folder-line"${window.showDirectoryPicker||folder?'':' hidden'}>${icon('folder')}
+    <div class="folder-line"${(window.showDirectoryPicker&&!touch)||folder?'':' hidden'}>${icon('folder')}
       ${folder?`<b>${esc(folder.name)}</b>
         ${imp.needsPerm?`<button class="btn sm" data-act="scan-folder">${icon('lock')}Permitir acceso y buscar</button>`:`<button class="btn sec sm" data-act="scan-folder">${icon('refresh')}Buscar archivos nuevos</button>`}
         <button class="btn ghost sm" data-act="pick-folder">Cambiar carpeta</button>`

@@ -18,6 +18,7 @@ from playwright.sync_api import sync_playwright
 URL = "http://localhost:8000/"
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CAPT = os.path.join(RAIZ, "pruebas", "capturas")
+SINT = os.path.join(RAIZ, "pruebas", "sinteticos")
 os.makedirs(CAPT, exist_ok=True)
 F = "window.__fin"
 TOKEN = "github_pat_prueba_inventado"
@@ -333,9 +334,79 @@ def flujo(browser):
     ctx_mv.close()
 
 
+def flujo_importar_movil(browser):
+    """Importar los archivos del banco en el móvil, con la configuración que llega del PC."""
+    gist = GistFalso()
+    err_pc, err_mv = [], []
+    print("Importar en el móvil")
+    ctx_pc, pc = nueva_pagina(browser, gist, err_pc)
+    pc.click(".nav-btn[data-view=importar]")
+    # En el PC: cuentas creadas al importar septiembre de BBVA, ING y Trade Republic
+    for nombre in ["bbva-cuenta-septiembre.xlsx", "ing-cuenta.xls"]:
+        pc.set_input_files("#fileInput", os.path.join(SINT, nombre))
+        pc.wait_for_selector(f".file-item[aria-current=true] >> text={nombre}")
+        pc.click("[data-act=rv-new-acc]")
+        pc.click("#accForm button[type=submit]")
+        pc.wait_for_function("document.querySelector('#rvAcc') && document.querySelector('#rvAcc').value !== ''")
+        pc.click("[data-act=rv-confirm]")
+        pc.wait_for_selector("text=movimientos importados")
+        pc.wait_for_timeout(300)
+    n_pc = pc.evaluate(f"() => {F}.S.movements.size")
+    activar(pc)
+
+    ctx_mv, mv = nueva_pagina(browser, gist, err_mv, movil=True)
+    activar(mv)
+    ok(mv.evaluate(f"() => {F}.S.accounts.size") == 2, "el móvil recibe las cuentas del PC con sus identificadores")
+    mv.click("#bnMore")
+    mv.click(".nav-btn[data-view=importar]")
+    ok(mv.locator("[data-act=pick-files]").is_visible(), "botón «Elegir archivos» a la vista")
+    # BBVA octubre (se solapa con septiembre) desde el móvil
+    mv.set_input_files("#fileInput", os.path.join(SINT, "bbva-cuenta-octubre.xlsx"))
+    mv.wait_for_selector(".file-item[aria-current=true] >> text=bbva-cuenta-octubre.xlsx")
+    ok(mv.eval_on_selector("#rvAcc", "s => s.options[s.selectedIndex].text").startswith("BBVA"), "reconoce sola la cuenta BBVA")
+    txt = mv.inner_text("#view")
+    ok("2 nuevos" in txt and "3 ya estaban" in txt, "no duplica lo que ya importó el PC (2 nuevos, 3 ya estaban)")
+    mv.wait_for_timeout(400)
+    ok(mv.evaluate("() => document.querySelector('#sidebar').getBoundingClientRect().right") <= 0, "el menú lateral queda oculto del todo")
+    ok(mv.locator(".folder-line").is_hidden(), "sin carpeta de importación en el móvil")
+    sin_desborde(mv, "Móvil revisión de la importación")
+    mv.screenshot(path=os.path.join(CAPT, "android-importar-revision.png"), full_page=True)
+    mv.click("[data-act=rv-confirm]")
+    mv.wait_for_selector("text=2 movimientos importados en BBVA · el saldo cuadra")
+    ok(True, "BBVA importado en el móvil y el saldo cuadra")
+    # ING (.xls binario de Excel 97-2003) en el móvil: ya importado en el PC → nada nuevo
+    mv.set_input_files("#fileInput", os.path.join(SINT, "ing-cuenta.xls"))
+    mv.wait_for_selector(".file-item[aria-current=true] >> text=ing-cuenta.xls")
+    ok("ya se importó" in mv.inner_text("#view").lower() or "0 nuevos" in mv.inner_text("#view"), "el archivo de ING ya importado en el PC se reconoce")
+    # Trade Republic (CSV): cuenta nueva desde el móvil
+    mv.set_input_files("#fileInput", os.path.join(SINT, "trade-republic.csv"))
+    mv.wait_for_selector(".file-item[aria-current=true] >> text=trade-republic.csv")
+    mv.click("[data-act=rv-new-acc]")
+    mv.click("#accForm button[type=submit]")
+    mv.wait_for_function("document.querySelector('#rvAcc') && document.querySelector('#rvAcc').value !== ''")
+    mv.click("[data-act=rv-confirm]")
+    mv.wait_for_selector("text=movimientos importados en Trade Republic")
+    ok(True, "Trade Republic importado en el móvil con cuenta nueva")
+    mv.wait_for_function(f"() => !{F}.syncState().dirty && !{F}.syncState().busy", timeout=30000)
+    ok(sincronizar(pc), "el PC sincroniza")
+    r = pc.evaluate(f"() => [{F}.S.movements.size, {F}.S.accounts.size, {F}.S.imports.size]")
+    rm = mv.evaluate(f"() => [{F}.S.movements.size, {F}.S.accounts.size, {F}.S.imports.size]")
+    ok(r == rm and r[0] > n_pc and r[1] == 3, f"lo importado en el móvil llega al PC (movimientos, cuentas, importaciones) → PC {r} · móvil {rm}")
+    # El mismo archivo en el PC ya no se vuelve a importar
+    pc.click(".nav-btn[data-view=importar]")
+    pc.set_input_files("#fileInput", os.path.join(SINT, "bbva-cuenta-octubre.xlsx"))
+    pc.wait_for_selector(".file-item[aria-current=true] >> text=bbva-cuenta-octubre.xlsx")
+    ok(pc.locator("[data-act=rv-confirm]").count() == 0 or pc.is_disabled("[data-act=rv-confirm]") or "0 nuevos" in pc.inner_text("#view"),
+       "en el PC ese archivo ya figura como importado")
+    ok(not err_pc and not err_mv, "sin errores en la consola: " + "; ".join((err_pc + err_mv)[:3]))
+    ctx_pc.close()
+    ctx_mv.close()
+
+
 with sync_playwright() as pw:
     b = pw.chromium.launch()
     flujo(b)
+    flujo_importar_movil(b)
     b.close()
 
 print()
