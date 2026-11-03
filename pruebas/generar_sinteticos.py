@@ -134,6 +134,22 @@ OCT = [
 bbva_cuenta("bbva-cuenta-septiembre.xlsx", SEP, 5000.00)
 bbva_cuenta("bbva-cuenta-octubre.xlsx", OCT, 5000.00 - 30.00 + 15.00)
 
+# El banco cambia el orden de los cargos de un mismo día (y con él el saldo de cada fila) y anula un cargo anterior
+ORDEN_A = [  # descarga del 02/11
+    ("02/11/2026", "02/11/2026", "Adeudo financiera coche", "Adeudo nº 0000000000000010", -137.14),
+    ("02/11/2026", "02/11/2026", "Adeudo comunidad ficticia", "Adeudo nº 0000000000000011", -159.42),
+    ("02/11/2026", "02/11/2026", "Adeudo comunidad ficticia", "Adeudo nº 0000000000000012", -98.20),
+    ("31/10/2026", "02/11/2026", "Cargo por amortizacion de prestamo/credito", "0000-0000-00-0000000000", -233.62),
+    ("30/10/2026", "30/10/2026", "Bizum", "Compra: pedido anulado", -20.00),
+    ("28/10/2026", "28/10/2026", "Abono de nómina", "Empresa ficticia", 2000.00),
+]
+ORDEN_B = [  # descarga del 03/11: un abono nuevo, los del 02/11 en otro orden y sin el Bizum anulado
+    ("03/11/2026", "03/11/2026", "Abono por transferencia a su favor recibida en euros", "Transferencia recibida", 10.00),
+    ORDEN_A[2], ORDEN_A[1], ORDEN_A[0], ORDEN_A[3], ORDEN_A[5],
+]
+bbva_cuenta("bbva-cuenta-orden-a.xlsx", ORDEN_A, 1000.00)
+bbva_cuenta("bbva-cuenta-orden-b.xlsx", ORDEN_B, 1000.00 + 20.00 + 10.00)
+
 
 TARJETA_FILAS = [
     ("26/09/2026", "Mercadona c. ma", -12.40),

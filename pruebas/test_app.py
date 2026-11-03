@@ -535,6 +535,47 @@ def flujo_importacion(browser):
     ctx.close()
 
 
+def flujo_orden_banco(browser):
+    """El banco cambia el orden de los cargos de un mismo día (cambia el saldo de cada fila) y anula uno anterior."""
+    errores = []
+    ctx, p = nueva_pagina(browser, 1440, 900, errores)
+    print("Descarga con otro orden del banco")
+    p.click(".nav-btn[data-view=importar]")
+    importar(p, "bbva-cuenta-orden-a.xlsx")
+    p.click("[data-act=rv-new-acc]")
+    p.click("#accForm button[type=submit]")
+    p.wait_for_function("document.querySelector('#rvAcc') && document.querySelector('#rvAcc').value !== ''")
+    p.click("[data-act=rv-confirm]")
+    p.wait_for_selector("text=6 movimientos importados en BBVA · el saldo cuadra")
+    # Carlos completa el del coche antes de la siguiente descarga
+    p.evaluate("""() => { const F = window.__fin, m = [...F.S.movements.values()].find(m => m.amountCents === -13714);
+      return F.commit('', cs => cs.put('movements', {...m, payee: 'Compra coche 🚗', labels: ['Coche'], reviewed: true}), {noUndo: true}); }""")
+    importar(p, "bbva-cuenta-orden-b.xlsx")
+    txt = p.inner_text("#view")
+    ok("1 nuevos" in txt and "5 ya estaban" in txt and "(4 con cambios del banco)" in txt, "reconoce los que cambian de orden o de saldo (1 nuevo, 5 ya estaban, 4 con cambios)")
+    avisos = p.locator("input[data-rv-drop]").count()
+    ok(avisos == 1 and "pedido anulado" in p.inner_text(".rv-missing").lower(), f"solo propone quitar el Bizum anulado ({avisos})")
+    p.click("[data-act=rv-confirm]")
+    p.wait_for_selector("text=1 movimientos importados en BBVA · el saldo cuadra · 1 anulados quitados · 4 actualizados con los cambios del banco")
+    ok(True, "importado: el saldo cuadra, 1 anulado quitado y 4 actualizados")
+    coche = p.evaluate("""() => { const ms = [...window.__fin.S.movements.values()].filter(m => m.amountCents === -13714); return ms.map(m => [m.payee, m.labels, m.reviewed, m.bankBalanceCents]); }""")
+    ok(coche == [["Compra coche 🚗", ["Coche"], True, 127762]], f"el del coche no se duplica, conserva sus datos y toma el saldo nuevo → {coche}")
+    ok(p.evaluate("() => window.__fin.S.movements.size") == 6, "6 movimientos en total")
+    # Una tercera descarga igual ya casa al momento
+    p.click("[data-act=clear-files]")
+    importar(p, "bbva-cuenta-orden-b.xlsx")
+    p.wait_for_selector("text=Este archivo ya se importó")
+    ok(p.locator("[data-act=rv-confirm]").count() == 0 and p.locator("input[data-rv-drop]").count() == 0, "la siguiente vez ya casa sin cambios ni avisos")
+    # Deshacer devuelve el Bizum y los datos del banco de antes
+    p.click("tr:has-text('bbva-cuenta-orden-b') [data-act=undo-import] >> nth=0")
+    p.click("#cfmOk")
+    p.wait_for_selector("text=Importación deshecha")
+    d = p.evaluate("""() => { const ms = [...window.__fin.S.movements.values()], c = ms.find(m => m.amountCents === -13714); return [ms.length, c.bankBalanceCents, c.payee]; }""")
+    ok(d == [6, 100000, "Compra coche 🚗"], f"deshacer devuelve el anulado y el saldo de antes, y mantiene lo editado → {d}")
+    ok(not errores, "sin errores en la consola (orden del banco): " + "; ".join(errores[:3]))
+    ctx.close()
+
+
 def flujo_estrecho(browser, estado):
     errores = []
     ctx, p = nueva_pagina(browser, 361, 780, errores)
@@ -812,6 +853,7 @@ def flujo_estadisticas(browser):
 with sync_playwright() as pw:
     b = pw.chromium.launch()
     flujo_importacion(b)
+    flujo_orden_banco(b)
     est = flujo_pc(b)
     est2 = flujo_estadisticas(b)
     flujo_estrecho(b, est)

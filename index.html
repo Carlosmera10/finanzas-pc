@@ -3329,6 +3329,30 @@ function previewHtml(f){
     </tbody></table></div></section>`;
 }
 
+/* Movimientos ya importados que vuelven en otra descarga con otra huella. Pasa sobre todo cuando el banco cambia el orden de los movimientos
+   del mismo día (y con él el saldo de cada fila, que forma parte de la huella), cuando desaparece un cargo anterior (cambian los saldos
+   de los siguientes) o cuando cambia el concepto o la fecha de un cargo. Se reconocen por el importe y la fecha (±3 días con el mismo
+   concepto, o el mismo día con otro concepto), solo entre los importados que ya no casan con ninguna fila del archivo, para no duplicarlos
+   ni proponer quitarlos como anulados. Al confirmar se actualizan con los datos nuevos del banco y conservan todo lo demás. */
+function relinkRows(rows,accId,an){
+  const inFile=new Map(); for(const x of rows) inFile.set(x.fp,(inFile.get(x.fp)||0)+1);
+  const orphans=[...S.movements.values()].filter(m=>m.accountId===accId&&m.source==='import'&&m.fingerprint&&!m.bankRef&&m.date>=an.from&&m.date<=an.to&&m.occurrence>(inFile.get(m.fingerprint)||0));
+  if(!orphans.length) return;
+  const used=new Set(), cand=rows.filter(x=>!x.dup&&!x.r.bankRef);
+  for(const sameText of [true,false]) for(const x of cand){
+    if(x.relink) continue;
+    const ct=normText(x.r.rawConcept);
+    let best=null, bd=99;
+    for(const m of orphans){
+      if(used.has(m.id)||m.amountCents!==x.r.amountCents) continue;
+      const d=Math.abs(daysBetween(m.date,x.r.date)), same=normText(m.rawConcept||m.concept)===ct;
+      if(sameText?(!same||d>3):d!==0) continue;
+      if(d<bd){ best=m; bd=d; }
+    }
+    if(best){ used.add(best.id); x.relink=best; x.dup=true; }
+  }
+}
+
 /* ----- Revisión antes de confirmar ----- */
 function buildReview(fi){
   const f=imp.files[fi], an=f&&f.analysis; if(!an) return null;
@@ -3338,16 +3362,17 @@ function buildReview(fi){
   const accId=rv.accountId, acc=accId&&S.accounts.get(accId), fc=accId?fpCounts(accId):new Map(), seen=new Map(), claimed=new Set();
   rv.rows=an.rows.map((r,i)=>{
     const fp=accId?rowFp(accId,r):'', occ=(seen.get(fp)||0)+1; seen.set(fp,occ);
-    const dup=!!accId&&occ<=(fc.get(fp)||0);
-    let cls=null;
-    if(accId&&!dup){
-      cls=classifyRow(r,accId,claimed);
-      const e=rv.edits.get(i);
-      if(e){ Object.assign(cls,e); if(e.kind&&e.kind!=='transferencia'){ cls.transferAccountId=null; cls.pairWith=null; cls.settlement=false; } if(e.kind) cls.note=''; }
-      if(rv.allLabels&&rv.allLabels.length&&!cls.settlement) cls.labels=mergeLabels(cls.labels,rv.allLabels);
-    }
-    return {i,r,fp,occ,dup,cls,manual:null};
+    return {i,r,fp,occ,dup:!!accId&&occ<=(fc.get(fp)||0),cls:null,manual:null,relink:null};
   });
+  if(accId) relinkRows(rv.rows,accId,an);
+  rv.relinkCount=rv.rows.filter(x=>x.relink).length;
+  for(const x of rv.rows){
+    if(!accId||x.dup) continue;
+    const cls=classifyRow(x.r,accId,claimed), e=rv.edits.get(x.i);
+    if(e){ Object.assign(cls,e); if(e.kind&&e.kind!=='transferencia'){ cls.transferAccountId=null; cls.pairWith=null; cls.settlement=false; } if(e.kind) cls.note=''; }
+    if(rv.allLabels&&rv.allLabels.length&&!cls.settlement) cls.labels=mergeLabels(cls.labels,rv.allLabels);
+    x.cls=cls;
+  }
   /* Movimientos apuntados a mano que ahora llegan del banco: el del banco los sustituye y se queda con su categoría, beneficiario, etiquetas y notas */
   if(accId){
     if(!rv.keepManual) rv.keepManual=new Set();
@@ -3372,7 +3397,8 @@ function buildReview(fi){
   if(accId&&an.to>an.from){
     if(!rv.dropMissing) rv.dropMissing=new Set();
     const inFile=new Map(); for(const x of rv.rows) inFile.set(x.fp,(inFile.get(x.fp)||0)+1);
-    rv.missing=[...S.movements.values()].filter(m=>m.accountId===accId&&m.source==='import'&&m.fingerprint&&!m.transferPairId&&m.date>an.from&&m.date<an.to&&m.occurrence>(inFile.get(m.fingerprint)||0)).sort((a,b)=>a.date<b.date?-1:1);
+    const relinked=new Set(rv.rows.filter(x=>x.relink).map(x=>x.relink.id));
+    rv.missing=[...S.movements.values()].filter(m=>m.accountId===accId&&m.source==='import'&&m.fingerprint&&!relinked.has(m.id)&&!m.transferPairId&&m.date>an.from&&m.date<an.to&&m.occurrence>(inFile.get(m.fingerprint)||0)).sort((a,b)=>a.date<b.date?-1:1);
     if(rv.missingInit!==accId){ rv.missingInit=accId; rv.dropMissing=new Set(rv.missing.map(m=>m.id)); }
   }
   rv.newCount=rv.rows.filter(x=>!x.dup).length; rv.dupCount=rv.rows.length-rv.newCount;
@@ -3415,7 +3441,7 @@ function reviewHtml(fi){
     const sub=[r.bankCategory,c&&c.note,c&&c.ruleId?'Regla: «'+(S.rules.get(c.ruleId)?.text||'')+'»':''].filter(Boolean).join(' · ');
     const head=`<td class="nowrap">${fmtDate(r.date)}</td><td class="ellip" title="${esc(r.rawConcept)}">${esc(r.rawConcept)}${sub?`<span class="sub">${esc(sub)}</span>`:''}</td>
       <td class="num">${amtHtml(r.amountCents,c&&c.kind)}</td>${an.chain?`<td class="num faint">${isInt(r.bankBalanceCents)?money(r.bankBalanceCents):''}</td>`:''}`;
-    if(x.dup||!c) return `<tr class="dup"><td>${x.dup?'<span class="chip">Ya estaba</span>':''}</td>${head}<td colspan="4" class="faint">—</td></tr>`;
+    if(x.dup||!c) return `<tr class="dup"><td>${x.relink?`<span class="chip info" title="Ya estaba («${esc(x.relink.payee||movConcept(x.relink))}», ${fmtDate(x.relink.date)}), pero el banco ha cambiado su saldo, orden${x.relink.date!==r.date?', fecha':''} o concepto. Al confirmar se actualiza y conserva su categoría, beneficiario y etiquetas.">Ya estaba · cambiado</span>`:x.dup?'<span class="chip">Ya estaba</span>':''}</td>${head}<td colspan="4" class="faint">${x.relink?esc(x.relink.payee||''):'—'}</td></tr>`;
     const third=c.kind==='transferencia'
       ?`<select class="inp" data-rv="transferAccountId" data-i="${x.i}"><option value="">Otra cuenta…</option>${accOptionsHtml(c.transferAccountId,{all:true,exclude:rv.accountId})}</select>`
       :`<select class="inp" data-rv="categoryId" data-i="${x.i}"><option value="">Sin categoría</option>${catOptionsHtml(c.kind,c.categoryId)}</select>`;
@@ -3432,7 +3458,7 @@ function reviewHtml(fi){
       <label class="fld rv-acc">Cuenta<select class="inp" id="rvAcc"><option value="">Elige la cuenta…</option>${comp.length?`<optgroup label="${esc(BANKS[im.bank])}">${opt(comp)}</optgroup>`:''}${other.length?`<optgroup label="Otras">${opt(other)}</optgroup>`:''}</select></label>
       <button class="btn sec sm" data-act="rv-new-acc">${icon('plus')}Nueva cuenta</button>
       <div><div class="k">Periodo</div>${fmtDate(an.from)} – ${fmtDate(an.to)}</div>
-      <div><div class="k">Movimientos</div>${NF_INT.format(an.rows.length)}${rv.accountId?` · <b>${NF_INT.format(rv.newCount)} nuevos</b> · ${NF_INT.format(rv.dupCount)} ya estaban${rv.manualCount?` · ${NF_INT.format(rv.manualCount)} sustituyen a apuntados a mano`:''}`:''}</div>
+      <div><div class="k">Movimientos</div>${NF_INT.format(an.rows.length)}${rv.accountId?` · <b>${NF_INT.format(rv.newCount)} nuevos</b> · ${NF_INT.format(rv.dupCount)} ya estaban${rv.relinkCount?` <span class="faint" title="El banco ha cambiado su saldo, su orden dentro del día, su fecha o su concepto. Se reconocen y se actualizan al confirmar.">(${NF_INT.format(rv.relinkCount)} con cambios del banco)</span>`:''}${rv.manualCount?` · ${NF_INT.format(rv.manualCount)} sustituyen a apuntados a mano`:''}`:''}</div>
       ${an.chain?`<div><div class="k">Saldo final</div>${money(an.chain.closing)} · ${fmtDate(an.chain.closingDate)}</div>`:''}
     </div>
     ${rv.openingOffer||rv.hintOffer?`<div class="rv-opts">
@@ -3443,7 +3469,7 @@ function reviewHtml(fi){
       ${rv.missing.map(m=>`<label class="chk"><input type="checkbox" data-rv-drop="${m.id}"${rv.dropMissing.has(m.id)?' checked':''}>Quitar al confirmar: ${fmtDate(m.date)} · ${esc(m.payee||movConcept(m))} · <b>${money(m.amountCents)}</b>${m.exportId?' <span class="chip warn">ya está en Bluecoins: bórralo también allí</span>':''}</label>`).join('')}</div>`:''}
     ${rv.warnings.length?`<ul class="warns">${rv.warnings.map(x=>`<li>${icon('alert','ic xs')}${esc(x)}</li>`).join('')}</ul>`:''}
     <div class="set-row">
-      ${done&&!rv.newCount&&!(rv.missing||[]).some(m=>rv.dropMissing.has(m.id))?'':`<button class="btn" data-act="rv-confirm"${rv.accountId?'':' disabled'}>${icon('check')}${rv.newCount?`Confirmar importación (${NF_INT.format(rv.newCount)})`:'Marcar como importado'}</button>`}
+      ${done&&!rv.newCount&&!rv.relinkCount&&!(rv.missing||[]).some(m=>rv.dropMissing.has(m.id))?'':`<button class="btn" data-act="rv-confirm"${rv.accountId?'':' disabled'}>${icon('check')}${rv.newCount?`Confirmar importación (${NF_INT.format(rv.newCount)})`:'Marcar como importado'}</button>`}
       <button class="btn ghost" data-act="rv-raw">${icon('file')}Ver el archivo original</button>
       ${rv.dupCount&&rv.accountId?`<label class="chk"><input type="checkbox" id="rvDups"${rv.showDups?' checked':''}>Ver también los que ya estaban</label>`:''}
       ${done?'<span class="chip ok">Este archivo ya se importó</span>':''}
@@ -3469,8 +3495,14 @@ async function confirmImport(fi){
   if(!acc){ showToast('Elige la cuenta del archivo',{error:true}); return; }
   const news=rv.rows.filter(x=>!x.dup&&x.cls), importId=uid(), now=nowISO(), im=importerOf(an.importerId);
   const ok=await commit('',cs=>{
-    const ids=[], pairChanges=[], hits=new Map(), replaced=[], removed=[];
+    const ids=[], pairChanges=[], hits=new Map(), replaced=[], removed=[], relinked=[];
     for(const m of rv.missing||[]) if(rv.dropMissing.has(m.id)&&S.movements.has(m.id)){ removed.push(clone(S.movements.get(m.id))); cs.del('movements',m.id); }
+    /* Los que ya estaban con cambios del banco: nueva huella, saldo, fecha y concepto del banco; se conserva todo lo demás */
+    for(const x of rv.rows) if(x.relink&&S.movements.has(x.relink.id)){
+      const o=S.movements.get(x.relink.id), r=x.r; relinked.push(clone(o));
+      cs.put('movements',{...clone(o),fingerprint:x.fp,occurrence:x.occ,date:r.date,valueDate:r.valueDate||o.valueDate,rawConcept:r.rawConcept,
+        bankBalanceCents:isInt(r.bankBalanceCents)?r.bankBalanceCents:null,detail:r.detail||o.detail,changedAfterExport:o.exportId&&o.date!==r.date?true:o.changedAfterExport});
+    }
     for(const x of news){
       const r=x.r, c=x.cls, isT=c.kind==='transferencia';
       const m={id:uid(),accountId:acc.id,date:r.date,valueDate:r.valueDate||'',amountCents:r.amountCents,rawConcept:r.rawConcept,concept:'',payee:(c.payee||'').trim().slice(0,120),
@@ -3504,8 +3536,8 @@ async function confirmImport(fi){
       cs.put('checks',{id:checkId,accountId:acc.id,date:an.chain.closingDate,realCents:an.chain.closing,appCents:app,bluecoinsCents:null,diffCents:diff,note:'Automático al importar '+f.name.slice(0,120),createdAt:now});
     }
     cs.put('imports',{id:importId,at:now,fileName:f.name,fileHash:f.hash,importer:an.importerId,bank:im.bank,accountId:acc.id,from:an.from,to:an.to,
-      rows:an.rows.length,added:news.length,duplicates:rv.dupCount,movementIds:ids,pairChanges,checkId,openingBefore,hintAdded,warnings:rv.warnings,replaced,removed});
-    const tail=(diff==null?'':diff===0?' · el saldo cuadra':` · descuadre de ${money(Math.abs(diff))}`)+(replaced.length?` · ${replaced.length} sustituyen a apuntados a mano`:'')+(removed.length?` · ${removed.length} anulados quitados`:'');
+      rows:an.rows.length,added:news.length,duplicates:rv.dupCount,movementIds:ids,pairChanges,checkId,openingBefore,hintAdded,warnings:rv.warnings,replaced,removed,relinked});
+    const tail=(diff==null?'':diff===0?' · el saldo cuadra':` · descuadre de ${money(Math.abs(diff))}`)+(replaced.length?` · ${replaced.length} sustituyen a apuntados a mano`:'')+(removed.length?` · ${removed.length} anulados quitados`:'')+(relinked.length?` · ${relinked.length} actualizados con los cambios del banco`:'');
     return (news.length?`${news.length} movimientos importados en ${acc.name}`:`Archivo registrado sin movimientos nuevos`)+tail;
   });
   if(!ok) return;
@@ -3536,6 +3568,10 @@ async function undoImport(id){
     }
     for(const pc of im.pairChanges||[]) if(S.movements.has(pc.id)){ const n=normMovement(pc.before); if(n) cs.put('movements',n); }
     for(const b of [...(im.replaced||[]),...(im.removed||[])]){ const n=normMovement(b); if(n&&!S.movements.has(n.id)) cs.put('movements',n); }
+    /* Los actualizados vuelven a los datos del banco de antes; lo que se haya editado después (categoría, etiquetas…) se mantiene */
+    for(const b of im.relinked||[]){ const m=S.movements.get(b.id); if(!m) continue;
+      const k=['fingerprint','occurrence','date','valueDate','rawConcept','bankBalanceCents','detail','changedAfterExport'];
+      cs.put('movements',{...clone(m),...Object.fromEntries(k.map(f=>[f,b[f]]))}); }
     if(im.checkId) cs.del('checks',im.checkId);
     const a=S.accounts.get(im.accountId);
     if(a&&(im.openingBefore||im.hintAdded)){ const na=clone(a);
@@ -4247,6 +4283,7 @@ function renderHelp(){
   <ul><li><b>Al importar</b>: si el banco trae un movimiento que ya habías apuntado a mano (mismo importe, hasta 5 días de diferencia), la fila sale como <b>Sustituye</b>: al confirmar, se queda el del banco con la categoría, el beneficiario, las etiquetas y las notas que pusiste. Pulsa <b>Sustituye</b> si quieres mantener los dos.</li>
   <li>Al importar, lo que le falte a cada movimiento nuevo (categoría, beneficiario, etiquetas) se completa con lo que pusiste en movimientos anteriores con el <b>mismo concepto</b> del banco (si al menos el 60 % coincide) o con lo habitual del beneficiario. Lo apuntado a mano manda: solo se completa lo que dejaste vacío. En la revisión, debajo del concepto, pone qué se ha completado.</li>
   <li>Si en una descarga nueva ya no aparece un movimiento que se importó antes (por ejemplo, un cargo duplicado que el banco ha anulado), sale en <b>Ya no aparece en este archivo</b>, marcado para <b>Quitar al confirmar</b>.</li>
+  <li>Si el banco cambia el orden de los movimientos de un mismo día (y con él el saldo de cada fila), o su fecha o su concepto, la app los reconoce igualmente: salen como <b>Ya estaba · cambiado</b> y, al confirmar, se actualizan con los datos nuevos del banco sin perder su categoría, beneficiario ni etiquetas.</li>
   <li>En <span class="path">Movimientos → Estado → Posibles duplicados</span> están los que coinciden en cuenta, fecha, importe y concepto, y los apuntados a mano con su gemelo del banco. Si de verdad son dos, abre uno y pulsa <b>No es duplicado</b>.</li>
   <li>Todo se puede deshacer con <kbd>Ctrl</kbd>+<kbd>Z</kbd> o con <b>Deshacer importación</b>.</li></ul>
 
