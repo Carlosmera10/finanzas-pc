@@ -1525,21 +1525,60 @@ function catLabel(id){ const c=S.categories.get(id); if(!c) return ''; const p=c
 const movConcept=m=>m.concept||m.rawConcept||'';
 const movSort=(a,b)=>a.date<b.date?1:a.date>b.date?-1:(a.createdAt<b.createdAt?1:a.createdAt>b.createdAt?-1:0);
 const allMovs=()=>cached('allMovs',()=>[...S.movements.values()].sort(movSort));
-/* Tarjetas con cargo mensual (tipo «Tarjeta de crédito», como las de BBVA): lo que se gasta en un mes se carga
-   en la cuenta a principios del mes siguiente («Recibo mes anterior»). Su saldo es lo pendiente de cargar:
-   lo gastado desde el día 1 del mes del último recibo (antes del recibo, también el mes anterior). */
+/* Tarjetas con cargo mensual (tipo «Tarjeta de crédito», como las de BBVA): lo gastado se carga en la cuenta a
+   principios del mes siguiente («Recibo mes anterior»). Su saldo es lo pendiente de cargar.
+   El recibo no cobra justo el mes natural: el del 05/11/2026 fueron las compras del 01/10 al 28/10 y las del 30 y 31/10
+   pasaron al siguiente. Por eso se busca qué compras cobra cada recibo (receiptCover) y lo pendiente es
+   lo gastado desde el primer día que cobra el recibo, menos lo que ya han cobrado ese recibo y los posteriores.
+   Si no se encuentra (faltan compras en la app), se supone el mes natural: lo gastado desde el día 1 del mes del último recibo. */
 const isMonthlyCard=a=>!!a&&a.kind==='tarjeta_credito';
+/* Sumas de los subconjuntos propios (ni vacío ni completo) de los importes de un día; solo con 12 compras o menos */
+function partialSums(arr){
+  const out=new Set(), n=arr.length; if(n<2||n>12) return out;
+  for(let mask=1;mask<(1<<n)-1;mask++){ let s=0; for(let i=0;i<n;i++) if(mask&(1<<i)) s+=arr[i]; out.add(s); }
+  return out;
+}
+/* Tramo de días seguidos, antes del recibo, cuyas compras suman exactamente su importe. Empieza cerca del día 1 del mes
+   anterior al recibo (±10 días) y acaba cerca del final de ese mes (desde 10 días antes hasta la víspera del recibo).
+   El primer o el último día del tramo pueden entrar solo en parte. Devuelve {from, excl}: el primer día y la suma de
+   las compras de ese día que no cobra (eran del recibo anterior), o null. */
+function receiptCover(rec,purch){
+  return cached('rcover|'+rec.id+'|'+rec.date+'|'+rec.amountCents,()=>{
+    const mStart=rec.date.slice(0,7)+'-01', endPrev=addDays(mStart,-1), firstPrev=endPrev.slice(0,7)+'-01';
+    const aLo=addDays(firstPrev,-10), aHi=addDays(firstPrev,10), bLo=addDays(endPrev,-10);
+    const byDay=new Map();
+    for(const m of purch) if(m.date>=aLo&&m.date<rec.date){ if(!byDay.has(m.date)) byDay.set(m.date,[]); byDay.get(m.date).push(m.amountCents); }
+    const days=[...byDay.keys()].sort(), tot=days.map(d=>byDay.get(d).reduce((t,v)=>t+v,0)), pre=[0];
+    for(const t of tot) pre.push(pre[pre.length-1]+t);
+    const subs=new Map(), part=i=>{ if(!subs.has(i)) subs.set(i,partialSums(byDay.get(days[i]))); return subs.get(i); };
+    const target=-rec.amountCents; let best=null;
+    const consider=(rank,i,excl)=>{ const sc=rank*1000+Math.abs(daysBetween(firstPrev,days[i])); if(!best||sc<best.sc) best={sc,from:days[i],excl}; };
+    for(let ai=0;ai<days.length&&days[ai]<=aHi;ai++) for(let bi=ai+1;bi<days.length;bi++){
+      if(days[bi]<bLo) continue;
+      const full=pre[bi+1]-pre[ai];
+      if(full===target) consider(0,ai,0);
+      if(part(bi).has(target-(full-tot[bi]))) consider(1,ai,0);
+      const s=target-(full-tot[ai]); if(part(ai).has(s)) consider(1,ai,tot[ai]-s);
+    }
+    return best&&{from:best.from,excl:best.excl};
+  });
+}
 function cardInfo(accId,upto){
   return cached('card|'+accId+'|'+upto,()=>{
-    let rec=null; const ms=[];
+    const recs=[], ms=[];
     for(const m of S.movements.values()){
-      if(m.accountId!==accId||m.historic||m.date>upto) continue;
-      if(m.kind==='transferencia'){ if(m.amountCents>0&&(!rec||m.date>rec.date)) rec=m; } else ms.push(m);
+      if(m.accountId!==accId||m.historic) continue;
+      if(m.kind==='transferencia'){ if(m.amountCents>0&&m.date<=upto) recs.push(m); } else ms.push(m);
     }
-    const start=rec?rec.date.slice(0,7)+'-01':'', mStart=upto.slice(0,7)+'-01';
-    let pending=0, month=0, last='';
-    for(const m of ms){ if(m.date>=start) pending+=m.amountCents; if(m.date>=mStart) month+=m.amountCents; if(m.date>last) last=m.date; }
-    return {pending,month,start,receipt:rec,last};
+    recs.sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:0);
+    const rec=recs[recs.length-1]||null, mStart=upto.slice(0,7)+'-01';
+    let anchor=null, cover=null;
+    for(let i=recs.length-1;i>=0&&!cover;i--){ cover=receiptCover(recs[i],ms); if(cover) anchor=recs[i]; }
+    let start, pending=0, month=0, last='';
+    if(cover){ start=cover.from; pending=-cover.excl; for(const r of recs) if(r.date>=anchor.date) pending+=r.amountCents; }
+    else start=rec?rec.date.slice(0,7)+'-01':'';
+    for(const m of ms){ if(m.date>upto) continue; if(m.date>=start) pending+=m.amountCents; if(m.date>=mStart) month+=m.amountCents; if(m.date>last) last=m.date; }
+    return {pending,month,start,receipt:rec,last,exact:!!cover};
   });
 }
 const linkedCards=accId=>accSorted(true).filter(c=>isMonthlyCard(c)&&c.linkedAccountId===accId);
@@ -2142,7 +2181,7 @@ function renderResumen(){
     const hosts=[...new Set(cards.map(c=>c.linkedAccountId).filter(id=>id&&S.accounts.has(id)))];
     const rowsC=cards.map(c=>{ const ci=cardInfo(c.id,today), used=-ci.pending, lim=c.limitCents;
       const st=lim?(used>=lim?{cls:'crit',ic:'x-circle',txt:'Límite superado'}:used>=lim*0.8?{cls:'warn',ic:'alert',txt:'Cerca del límite'}:{cls:'good',ic:'check-circle',txt:'Bien'}):null;
-      const extra=ci.pending!==ci.month?`<div class="vsub">Pendiente de cargar ${money(-ci.pending)} (incluye el mes anterior, aún sin recibo)</div>`:'';
+      const extra=ci.pending!==ci.month?`<div class="vsub">Pendiente de cargar ${money(-ci.pending)}${-ci.pending>-ci.month?' (incluye compras anteriores a este mes que el banco aún no ha cobrado)':''}</div>`:'';
       return `<div class="card-row"><div class="cr-head"><span class="cr-name">${esc(c.name)}</span><b class="cr-val">${money(-ci.month)}</b></div>
         <div class="vsub">Gastado este mes${ci.last?` · hasta el ${fmtDate(ci.last)}`:''}${lim?` · límite ${money(lim)}`:''}</div>
         ${lim?`<div class="meter ${st.cls}"${tipAttr(['Pendiente de cargar\t'+money(used),'Límite\t'+money(lim),'Queda\t'+money(lim-used)])}><span style="width:${Math.min(100,used/lim*100)}%"></span></div><div class="meter-st ${st.cls}">${icon(st.ic,'ic xs')}${st.txt} · queda ${money(Math.max(0,lim-used))}</div>`:''}${extra}</div>`; }).join('');
@@ -4289,7 +4328,7 @@ function renderHelp(){
 
   <h2>Tarjetas de BBVA</h2>
   <p>BBVA cobra lo gastado con cada tarjeta en un solo cargo a principios del mes siguiente («Recibo mes anterior»). Por eso:</p>
-  <ul><li>El <b>saldo</b> de una tarjeta es lo <b>pendiente de cargar</b>: lo gastado desde el día 1 del mes. Entre el día 1 y el día del recibo incluye también el mes anterior.</li>
+  <ul><li>El <b>saldo</b> de una tarjeta es lo <b>pendiente de cargar</b>: lo gastado que el banco aún no ha cobrado. El recibo no cobra justo el mes natural (las compras de los últimos días del mes suelen pasar al recibo siguiente): la app mira qué compras suman el importe de cada recibo y cuenta como pendiente todo lo demás. Entre el día 1 y el día del recibo incluye también lo del mes anterior.</li>
   <li>En <span class="path">Resumen → Tarjetas</span> ves lo gastado este mes en cada tarjeta, hasta qué día llega el último archivo y el <b>disponible real</b> de la cuenta: su saldo menos lo pendiente de las tarjetas.</li>
   <li>Para ver si estás cerca del límite: <span class="path">Cuentas → lápiz de la tarjeta → Límite de la tarjeta al mes (€)</span> → <b>Guardar</b>. Aparece una barra con lo que queda y un aviso a partir del 80 %.</li>
   <li>La tarjeta tiene que ser de tipo <b>Tarjeta de crédito</b> y tener elegida la cuenta en <b>Se carga en la cuenta</b>.</li></ul>
@@ -4564,7 +4603,7 @@ async function boot(){
 boot();
 
 /* ================= Ganchos de prueba ================= */
-window.__fin={S,ui,parseAmount,centsToPlain,centsToComma,parseDateCell,excelSerialToYMD,ymd,parseYMD,addDays,daysBetween,
+window.__fin={S,ui,receiptCover,parseAmount,centsToPlain,centsToComma,parseDateCell,excelSerialToYMD,ymd,parseYMD,addDays,daysBetween,
   sniff,decodeText,unzip,readXlsx,readHtmlTables,readXml2003,parseCsv,detectSep,readSpreadsheetBytes,readSpreadsheet,cellText,
   normText,fingerprint,normMovement,normAccount,normCategory,parseCatLines,balancesAt,balanceAt,flowsBetween,causesFor,
   bluecoinsCsv,movementsToBluecoinsRows,BC_HEADER,commit,undo,backupData,go,ready:()=>!!db,

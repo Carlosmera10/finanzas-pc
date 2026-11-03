@@ -576,6 +576,26 @@ def flujo_orden_banco(browser):
     ctx.close()
 
 
+def flujo_ciclo_tarjeta(browser):
+    """El recibo de la tarjeta no cobra el mes natural: lo pendiente se calcula con lo que cobra de verdad cada recibo."""
+    errores = []
+    ctx, p = nueva_pagina(browser, 1440, 900, errores)
+    print("Ciclo del recibo de la tarjeta")
+    r = p.evaluate("""async () => { const F = window.__fin;
+      const movs = [['2026-08-26', -1000], ['2026-09-01', -2000], ['2026-09-15', -3000], ['2026-09-28', -4000], ['2026-09-28', -500], ['2026-09-30', -700],
+        ['2026-10-05', 9000, 1], ['2026-10-02', -1100], ['2026-10-29', -1300], ['2026-10-31', -1700], ['2026-11-05', 3600, 1]];
+      await F.commit('', cs => { cs.put('accounts', F.normAccount({id: 'B', name: 'BBVA', bank: 'bbva', kind: 'banco', order: 1}));
+        cs.put('accounts', F.normAccount({id: 'T', name: 'Tarjeta', bank: 'bbva', kind: 'tarjeta_credito', linkedAccountId: 'B', order: 2}));
+        movs.forEach(([d, a, rec], i) => cs.put('movements', F.normMovement({id: 'c' + i, accountId: 'T', date: d, amountCents: a, kind: rec ? 'transferencia' : 'gasto', transferAccountId: rec ? 'B' : null, rawConcept: rec ? 'Recibo mes anterior' : 'Compra ' + i, source: 'import'}))); }, {noUndo: true});
+      return ['2026-11-04', '2026-11-06'].map(d => { const c = F.cardInfo('T', d); return [c.pending, c.exact]; }); }""")
+    # 04/11: el recibo del 05/10 cobró 01/09–15/09 y parte del 28/09; faltan 5 + 7 + 11 + 13 + 17
+    ok(r[0] == [-5300, True], f"antes del recibo: pendiente con las compras de final de mes que no cobró el anterior → {r[0]}")
+    # 06/11: el recibo del 05/11 cobró el resto del 28/09, el 30/09, el 02/10 y el 29/10; queda el 31/10
+    ok(r[1] == [-1700, True], f"después del recibo: solo queda lo que no ha cobrado → {r[1]}")
+    ok(not errores, "sin errores en la consola (ciclo de la tarjeta): " + "; ".join(errores[:3]))
+    ctx.close()
+
+
 def flujo_estrecho(browser, estado):
     errores = []
     ctx, p = nueva_pagina(browser, 361, 780, errores)
@@ -854,6 +874,7 @@ with sync_playwright() as pw:
     b = pw.chromium.launch()
     flujo_importacion(b)
     flujo_orden_banco(b)
+    flujo_ciclo_tarjeta(b)
     est = flujo_pc(b)
     est2 = flujo_estadisticas(b)
     flujo_estrecho(b, est)
