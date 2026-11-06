@@ -28,7 +28,7 @@ App de finanzas (PWA para Chrome en el PC y en el móvil Android), que puede usa
 - **Importar:** lee los archivos de la carpeta elegida o los que se arrastren: `.xlsx`, `.xls` de Excel 97-2003 (binario, con lector propio), `.xls` que en realidad son HTML o XML de Excel 2003, y `.csv`.
   - Importadores de **BBVA (cuenta y tarjetas)**, **ING (cuenta)** y **Trade Republic** (CSV), reconocidos por el contenido del archivo.
   - Revisión antes de confirmar: cuenta propuesta, nuevos frente a los que ya estaban (descargas que se solapan), saldo encadenado, saldo de apertura y avisos.
-  - Transferencias entre cuentas propias y liquidaciones de tarjeta emparejadas automáticamente.
+  - Transferencias entre cuentas propias y liquidaciones de tarjeta emparejadas automáticamente. Si la otra cuenta no tiene archivos del banco de esa fecha, se apunta la otra mitad («contrapartida automática») y el archivo de esa cuenta la sustituye al importarlo; las transferencias apuntadas a mano tampoco se duplican al importar.
   - Control de saldo automático al importar y «Deshacer importación».
 - **Historial de Bluecoins:** importa un archivo con todo lo apuntado en Bluecoins y lo cruza con lo importado del banco (completa los movimientos que coinciden, añade el resto como histórico y lista lo que solo está en Bluecoins). Con «Deshacer importación».
 - **Reglas** de categorización (contiene / empieza por / expresión regular), con «Crear regla» desde un movimiento.

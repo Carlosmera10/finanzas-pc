@@ -1568,7 +1568,8 @@ function cardInfo(accId,upto){
     const recs=[], ms=[];
     for(const m of S.movements.values()){
       if(m.accountId!==accId||m.historic) continue;
-      if(m.kind==='transferencia'){ if(m.amountCents>0&&m.date<=upto) recs.push(m); } else ms.push(m);
+      /* Recibos: lo que entra en la tarjeta por transferencia. Lo que sale de ella por transferencia (p. ej. a otra cuenta) también queda pendiente de cargar */
+      if(m.kind==='transferencia'&&m.amountCents>0){ if(m.date<=upto) recs.push(m); } else ms.push(m);
     }
     recs.sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:0);
     const rec=recs[recs.length-1]||null, mStart=upto.slice(0,7)+'-01';
@@ -1598,6 +1599,45 @@ function balancesAt(upto){
   });
 }
 const balanceAt=(accId,upto)=>balancesAt(upto).get(accId)??0;
+/* ----- Contrapartidas de las transferencias -----
+   Una transferencia importada a una cuenta propia cuyos archivos del banco no llegan a esa fecha (o que nunca se importa,
+   como una cuenta de ahorro que se lleva a mano) restaría de una cuenta sin sumar en la otra. En ese caso la app apunta
+   la otra mitad («contrapartida automática», como un movimiento manual); cuando llegue el archivo de esa cuenta,
+   el movimiento del banco la sustituye. */
+const importedUpTo=()=>cached('impTo',()=>{ const out=new Map(), up=(id,d)=>{ if(id&&d&&!(out.get(id)>=d)) out.set(id,d); };
+  for(const i of S.imports.values()) up(i.accountId,i.to);
+  for(const m of S.movements.values()) if(m.source==='import') up(m.accountId,m.date);
+  return out; });
+function needsCounterpart(m){
+  if(!m||m.kind!=='transferencia'||m.transferPairId||m.historic||!m.transferAccountId||m.transferAccountId===m.accountId) return false;
+  const a=S.accounts.get(m.accountId), o=S.accounts.get(m.transferAccountId); if(!a||!o) return false;
+  /* Si no cuenta en su propia cuenta o es anterior a la apertura de la otra (su saldo de apertura ya lo incluye), no hace falta */
+  if(a.openingDate&&m.date<a.openingDate&&!isMonthlyCard(a)) return false;
+  if(o.openingDate&&m.date<o.openingDate&&!isMonthlyCard(o)) return false;
+  return !(importedUpTo().get(o.id)>=m.date);
+}
+const isAutoCp=m=>!!m&&m.source==='manual'&&m.kind==='transferencia'&&/^Contrapartida automática/.test(m.detail||'');
+function counterpartFor(m,pairId,now=nowISO()){
+  return {id:uid(),accountId:m.transferAccountId,date:m.date,valueDate:'',amountCents:-m.amountCents,rawConcept:'',concept:m.concept||'',payee:m.payee||'',categoryId:null,
+    notes:'',labels:[],bankBalanceCents:null,pending:false,kind:'transferencia',transferPairId:pairId,transferAccountId:m.accountId,source:'manual',importId:m.importId||null,
+    fingerprint:'',occurrence:1,detail:'Contrapartida automática de '+accName(m.accountId),exportId:null,changedAfterExport:false,reviewed:false,createdAt:now};
+}
+/* Transferencias que ya restan (o suman) en una cuenta y no tienen su otra mitad */
+const missingCounterparts=()=>cached('missCp',()=>[...S.movements.values()].filter(needsCounterpart).sort((a,b)=>a.date<b.date?-1:1));
+/* Transferencias sin pareja aunque los archivos de la otra cuenta sí llegan a esa fecha (o sin cuenta de destino): hay que revisarlas */
+const unmatchedTransfers=()=>cached('unmT',()=>[...S.movements.values()].filter(m=>m.kind==='transferencia'&&!m.transferPairId&&!m.historic&&!needsCounterpart(m)
+  &&!(S.accounts.get(m.accountId)?.openingDate>m.date)));
+function createCounterparts(list=missingCounterparts()){
+  return commit('',cs=>{ const now=nowISO(); let n=0;
+    for(const m of list){ const cur=S.movements.get(m.id); if(!needsCounterpart(cur)) continue;
+      const pid=uid(); cs.put('movements',{...clone(cur),transferPairId:pid});
+      /* Si la otra mitad ya está apuntada sin pareja (p. ej. del histórico de Bluecoins), se empareja con ella en vez de duplicarla */
+      const o=findCounterpart({accountId:cur.accountId,date:cur.date,amountCents:cur.amountCents,hay:ruleHay(cur),transferAccountId:cur.transferAccountId},true);
+      if(o) cs.put('movements',{...clone(o),kind:'transferencia',categoryId:null,transferPairId:pid,transferAccountId:cur.accountId,changedAfterExport:o.exportId?true:o.changedAfterExport});
+      else cs.put('movements',counterpartFor(cur,pid,now));
+      bumpData(); n++; }
+    return n?`${n} ${n===1?'contrapartida creada':'contrapartidas creadas'}: la transferencia ya suma en las dos cuentas`:false; });
+}
 function flowsBetween(from,to){
   let inc=0, exp=0;
   for(const m of S.movements.values()){
@@ -1608,8 +1648,8 @@ function flowsBetween(from,to){
 }
 const dupKeys=()=>cached('dups',()=>{ const cnt=new Map(); for(const m of S.movements.values()){ const k=m.accountId+'|'+m.date+'|'+m.amountCents+'|'+normText(movConcept(m)); cnt.set(k,(cnt.get(k)||0)+1); } return new Set([...cnt].filter(([,n])=>n>1).map(([k])=>k)); });
 /* También: un movimiento apuntado a mano con su gemelo importado del banco (mismo importe, misma familia de cuentas, ±5 días) */
-const manualTwins=()=>cached('twins',()=>{ const out=new Set(); for(const m of S.movements.values()){ if(m.source!=='manual'||m.kind==='transferencia'||m.notDup) continue;
-  const t=dupCandidates({id:m.id,accountId:m.accountId,date:m.date,amountCents:m.amountCents},5).find(x=>x.source==='import'&&!x.notDup); if(t){ out.add(m.id); out.add(t.id); } } return out; });
+const manualTwins=()=>cached('twins',()=>{ const out=new Set(); for(const m of S.movements.values()){ if(m.source!=='manual'||m.notDup) continue;
+  const t=dupCandidates({id:m.id,pairId:m.transferPairId,accountId:m.accountId,date:m.date,amountCents:m.amountCents},5).find(x=>x.source==='import'&&!x.notDup); if(t){ out.add(m.id); out.add(t.id); } } return out; });
 const dupKey=m=>m.accountId+'|'+m.date+'|'+m.amountCents+'|'+normText(movConcept(m));
 const isDup=m=>!m.notDup&&dupKeys().has(m.accountId+'|'+m.date+'|'+m.amountCents+'|'+normText(movConcept(m)))||manualTwins().has(m.id);
 const lastImportByAcc=()=>cached('lastImp',()=>{ const out=new Map(); for(const i of S.imports.values()){ if(!i.accountId) continue; const p=out.get(i.accountId); if(!p||(i.at||'')>(p.at||'')) out.set(i.accountId,i); } return out; });
@@ -2128,6 +2168,11 @@ function insightsFor(ids){
   /* 6. Pendientes de revisar o de pasar a Bluecoins, controles y descuadres */
   const dups=[...S.movements.values()].filter(m=>ids.has(m.accountId)&&m.date>=addDays(today,-90)&&isDup(m)).length;
   if(dups) out.push({sev:'warn',text:`${dups} movimientos de los últimos 90 días son posibles duplicados.`,view:'movimientos',state:'dups'});
+  /* Transferencias que restan en una cuenta y no suman en la otra */
+  const miss=missingCounterparts().filter(m=>m.date<=today&&(ids.has(m.accountId)||ids.has(m.transferAccountId)));
+  if(miss.length) out.push({sev:'crit',text:`${miss.length===1?'Una transferencia cuenta':miss.length+' transferencias cuentan'} solo en una cuenta: ${[...new Set(miss.map(m=>accName(m.transferAccountId)))].join(', ')} no tiene archivos del banco de esas fechas, así que el dinero no aparece allí.`,act:'fix-transfers',actText:'Apuntar la otra mitad'});
+  const unm=unmatchedTransfers().filter(m=>ids.has(m.accountId));
+  if(unm.length) out.push({sev:'warn',text:`${unm.length===1?'Una transferencia sin pareja':unm.length+' transferencias sin pareja'}: ${unm.length===1?'resta o suma':'restan o suman'} en una sola cuenta. Indica la otra cuenta o cámbiala a gasto o ingreso.`,view:'movimientos',state:'sinpareja'});
   const noCat=all.filter(x=>!x.cat&&x.d>=addDays(today,-90)).length; if(noCat) out.push({sev:'info',text:`${noCat} movimientos de los últimos 90 días sin categoría.`,view:'movimientos',state:'sincat'});
   const bad=accSorted().filter(a=>ids.has(a.id)&&lastCheck(a.id)&&checkLive(lastCheck(a.id)).diff!==0); if(bad.length) out.push({sev:'crit',text:`Saldo descuadrado en ${bad.map(a=>a.name).join(', ')}.`,view:'controles'});
   const li=lastImportByAcc(); for(const a of accSorted()){ const l=li.get(a.id); if(ids.has(a.id)&&l&&daysBetween(ymd(new Date(l.at)),today)>35) out.push({sev:'info',text:`${a.name}: hace ${daysBetween(ymd(new Date(l.at)),today)} días de la última importación.`,view:'importar'}); }
@@ -2136,7 +2181,7 @@ function insightsFor(ids){
 const SEV={crit:['x-circle','Importante'],warn:['alert','Atención'],info:['clock','Para revisar']};
 function insightsHtml(list,max=8){
   if(!list.length) return `<p class="muted">${icon('check-circle','ic xs')} Sin avisos.</p>`;
-  return `<ul class="insights">${list.slice(0,max).map(x=>`<li class="ins ${x.sev}"><span class="ins-tag">${icon(SEV[x.sev][0],'ic xs')}${SEV[x.sev][1]}</span><span class="ins-text">${esc(x.text)}</span>${x.view?`<button class="btn ghost sm" data-act="ins-go" data-view="${x.view}"${x.cat?` data-cat="${esc(x.cat)}"`:''}${x.q!=null?` data-q="${esc(x.q)}"`:''}${x.state?` data-state="${x.state}"`:''}>Ver${icon('chev-r','ic xs')}</button>`:''}</li>`).join('')}</ul>${list.length>max?`<p class="faint">y ${list.length-max} más</p>`:''}`;
+  return `<ul class="insights">${list.slice(0,max).map(x=>`<li class="ins ${x.sev}"><span class="ins-tag">${icon(SEV[x.sev][0],'ic xs')}${SEV[x.sev][1]}</span><span class="ins-text">${esc(x.text)}</span>${x.act?`<button class="btn sec sm" data-act="${x.act}">${esc(x.actText)}</button>`:''}${x.view?`<button class="btn ghost sm" data-act="ins-go" data-view="${x.view}"${x.cat?` data-cat="${esc(x.cat)}"`:''}${x.q!=null?` data-q="${esc(x.q)}"`:''}${x.state?` data-state="${x.state}"`:''}>Ver${icon('chev-r','ic xs')}</button>`:''}</li>`).join('')}</ul>${list.length>max?`<p class="faint">y ${list.length-max} más</p>`:''}`;
 }
 
 /* ================= Vista: Resumen ================= */
@@ -2687,12 +2732,15 @@ function openMovDialog(id){
   $('movExtra').checked=!!(m&&m.extra);
   const pairManual=m&&m.transferPairId&&m.source==='manual';
   for(const el of [$('movAcc'),$('movDate'),$('movAmount')]) el.disabled=imported;
+  /* Mitad apuntada a mano de una transferencia cuya otra mitad viene del banco: el importe es el del banco */
+  if(pairManual&&[...S.movements.values()].some(x=>x.transferPairId===m.transferPairId&&x.id!==m.id&&x.source!=='manual')) $('movAmount').disabled=true;
   $('movLockLine').hidden=!imported;
   $('movRaw').hidden=!(imported&&m.rawConcept); $('movRaw').textContent=imported?[m.rawConcept,m.detail].filter(Boolean).join('\n'):'';
   for(const b of $('movKind').querySelectorAll('button')) b.disabled=!!pairManual&&b.dataset.kind!=='transferencia';
   const chips=[];
   if(m){ chips.push(`<span class="chip">${m.source==='manual'?'Manual':m.source==='bluecoins'?'Histórico de Bluecoins':'Importado'}</span>`);
     if(m.historic) chips.push(`<span class="chip">${icon('archive','ic xs')}No cuenta en el saldo</span>`);
+    if(isAutoCp(m)) chips.push(`<span class="chip info" title="La app la apuntó porque los archivos de esta cuenta no llegan a esa fecha. Cuando importes el archivo del banco, su movimiento la sustituirá.">Contrapartida automática</span>`);
     if(m.pending) chips.push(`<span class="chip warn">${icon('clock','ic xs')}Pendiente</span>`);
     if(useBc()&&m.exportId) chips.push(`<span class="chip info">${icon('send','ic xs')}${m.exportId==='bluecoins'?'Ya está en Bluecoins':'Exportado a Bluecoins'}</span>`);
     if(m.changedAfterExport) chips.push(`<span class="chip warn">${icon('alert','ic xs')}Cambiado tras exportar</span>`);
@@ -2797,17 +2845,29 @@ function saveMovDialog(){
         cs.put('movements',{...clone(n),id:uid(),accountId:other,amountCents:-n.amountCents,transferAccountId:n.accountId,categoryId:null,exportId:null,changedAfterExport:false,createdAt:nowISO()});
       }
     }
-    if(movKind!=='transferencia'){ n.transferAccountId=null; }
+    if(movKind!=='transferencia'){
+      n.transferAccountId=null;
+      /* Deja de ser transferencia: se deshace la pareja. La otra mitad apuntada a mano se quita; la del banco queda
+         como transferencia sin pareja (aparece en «Transferencias sin pareja» para revisarla) */
+      if(n.transferPairId){
+        for(const p of [...S.movements.values()].filter(x=>x.transferPairId===n.transferPairId&&x.id!==n.id)){
+          if(p.source==='manual') cs.del('movements',p.id); else cs.put('movements',{...clone(p),transferPairId:null});
+        }
+        n.transferPairId=null;
+      }
+    }
     if(n.transferPairId&&n.source==='manual'){
       const p=[...S.movements.values()].find(x=>x.transferPairId===n.transferPairId&&x.id!==n.id);
       if(p&&p.accountId===n.accountId) throw new Error('las dos cuentas de la transferencia son la misma');
+      /* La otra mitad viene del banco: manda su importe */
+      if(p&&p.source!=='manual') n.amountCents=-p.amountCents;
     }
     const sig=x=>JSON.stringify([x.accountId,x.date,x.amountCents,x.kind,x.categoryId,x.payee,x.notes,x.labels,x.transferAccountId]);
     if(n.exportId&&sig(n)!==sig(cur)) n.changedAfterExport=true;
     cs.put('movements',n);
     if(n.transferPairId&&n.source==='manual'){
       const p=[...S.movements.values()].find(x=>x.transferPairId===n.transferPairId&&x.id!==n.id);
-      if(p){ const pn={...clone(p),date:n.date,amountCents:-n.amountCents,notes:n.notes,labels:n.labels,payee:n.payee,concept:n.concept,reviewed:n.reviewed,transferAccountId:n.accountId};
+      if(p){ const pn=p.source==='manual'?{...clone(p),date:n.date,amountCents:-n.amountCents,notes:n.notes,labels:n.labels,payee:n.payee,concept:n.concept,reviewed:n.reviewed,transferAccountId:n.accountId}:{...clone(p),transferAccountId:n.accountId};
         if(pn.exportId&&sig(pn)!==sig(p)) pn.changedAfterExport=true; cs.put('movements',pn); }
     }
   });
@@ -2922,7 +2982,7 @@ function deleteMovements(ids){
       cs.del('movements',id); selMov.delete(id);
       if(m.transferPairId){
         for(const p of [...S.movements.values()].filter(x=>x.transferPairId===m.transferPairId&&x.id!==id&&!set.has(x.id))){
-          if(m.source==='manual'&&p.source==='manual'){ cs.del('movements',p.id); selMov.delete(p.id); }
+          if((m.source==='manual'&&p.source==='manual')||isAutoCp(p)){ cs.del('movements',p.id); selMov.delete(p.id); }
           else cs.put('movements',{...clone(p),transferPairId:null,transferAccountId:p.transferAccountId||m.accountId});
         }
       }
@@ -3073,13 +3133,16 @@ function applyRuleSet(m,r){
 const TRANSFER_RX=/TRANSF|TRASPASO|TRASP\b/;
 const movsByAmount=()=>cached('byAmt',()=>{ const m=new Map(); for(const x of S.movements.values()){ const l=m.get(x.amountCents); if(l) l.push(x); else m.set(x.amountCents,[x]); } return m; });
 function findCounterpart(x,forced=false,claimed=null){
-  const hay=x.hay||'';
-  const c=(movsByAmount().get(-x.amountCents)||[]).filter(o=>o.accountId!==x.accountId&&!o.transferPairId&&!(claimed&&claimed.has(o.id))&&Math.abs(daysBetween(o.date,x.date))<=3
-    &&(!o.transferAccountId||o.transferAccountId===x.accountId)&&(!x.transferAccountId||x.transferAccountId===o.accountId)
+  const hay=x.hay||'', xa=S.accounts.get(x.accountId);
+  /* Las compras de una tarjeta de cargo mensual nunca son transferencias: en la tarjeta solo se empareja la liquidación
+     (cuando se busca expresamente en la tarjeta). Tampoco cuenta el histórico de Bluecoins, que no está en el saldo. */
+  if(isMonthlyCard(xa)&&!x.transferAccountId) return null;
+  const okCard=o=>{ const oa=S.accounts.get(o.accountId); return !isMonthlyCard(oa)||(x.transferAccountId===o.accountId&&o.kind==='transferencia'); };
+  const c=(movsByAmount().get(-x.amountCents)||[]).filter(o=>o.accountId!==x.accountId&&!o.transferPairId&&!o.historic&&!(claimed&&claimed.has(o.id))&&Math.abs(daysBetween(o.date,x.date))<=3
+    &&(!o.transferAccountId||o.transferAccountId===x.accountId)&&(!x.transferAccountId||x.transferAccountId===o.accountId)&&okCard(o)
     &&(forced||o.kind==='transferencia'||TRANSFER_RX.test(hay)||TRANSFER_RX.test(ruleHay(o))));
   if(c.length<=1) return c[0]||null;
   /* Varios candidatos: gana el de fecha más cercana y el que nombra al otro banco en el concepto («Transferencia mensual ing», «Trade republic») */
-  const xa=S.accounts.get(x.accountId);
   const score=o=>{ const oa=S.accounts.get(o.accountId); let sc=Math.abs(daysBetween(o.date,x.date))*10;
     if(xa&&BANK_WORDS[xa.bank]&&BANK_WORDS[xa.bank].test(ruleHay(o))) sc-=50;
     if(oa&&BANK_WORDS[oa.bank]&&BANK_WORDS[oa.bank].test(hay)) sc-=50;
@@ -3416,9 +3479,24 @@ function buildReview(fi){
   if(accId){
     if(!rv.keepManual) rv.keepManual=new Set();
     const fam=accFamily(accId), used=new Set();
+    /* Transferencias apuntadas a mano (o contrapartidas automáticas) en esta cuenta: el movimiento del banco ocupa su lugar
+       y se queda con su pareja, para que la transferencia no cuente dos veces */
+    const manualT=[...S.movements.values()].filter(m=>m.source==='manual'&&m.kind==='transferencia'&&m.accountId===accId);
+    for(const x of rv.rows){
+      if(x.dup||!x.cls||x.cls.pairWith) continue;
+      const e=rv.edits.get(x.i); if(e&&e.kind&&e.kind!=='transferencia') continue;
+      const c=manualT.filter(m=>!used.has(m.id)&&m.amountCents===x.r.amountCents&&Math.abs(daysBetween(m.date,x.r.date))<=5).sort((a,b)=>Math.abs(daysBetween(a.date,x.r.date))-Math.abs(daysBetween(b.date,x.r.date)))[0];
+      if(!c) continue;
+      used.add(c.id); x.manual=c;
+      if(!rv.keepManual.has(x.i)){
+        const other=c.transferPairId?[...S.movements.values()].find(m=>m.transferPairId===c.transferPairId&&m.id!==c.id):null;
+        Object.assign(x.cls,{kind:'transferencia',categoryId:null,transferAccountId:other?other.accountId:c.transferAccountId,payee:x.cls.payee||c.payee,labels:mergeLabels(x.cls.labels,c.labels),
+          note:`Sustituye a la transferencia apuntada a mano el ${fmtDate(c.date)}`+(other||c.transferAccountId?` (con ${accName(other?other.accountId:c.transferAccountId)})`:'')});
+      }
+    }
     const manuals=[...S.movements.values()].filter(m=>m.source==='manual'&&m.kind!=='transferencia'&&fam.has(m.accountId));
     for(const x of rv.rows){
-      if(x.dup||!x.cls||x.cls.kind==='transferencia') continue;
+      if(x.dup||!x.cls||x.manual||x.cls.kind==='transferencia') continue;
       const c=manuals.filter(m=>!used.has(m.id)&&m.amountCents===x.r.amountCents&&Math.abs(daysBetween(m.date,x.r.date))<=5).sort((a,b)=>Math.abs(daysBetween(a.date,x.r.date))-Math.abs(daysBetween(b.date,x.r.date)))[0];
       if(!c) continue;
       used.add(c.id); x.manual=c;
@@ -3534,7 +3612,7 @@ async function confirmImport(fi){
   if(!acc){ showToast('Elige la cuenta del archivo',{error:true}); return; }
   const news=rv.rows.filter(x=>!x.dup&&x.cls), importId=uid(), now=nowISO(), im=importerOf(an.importerId);
   const ok=await commit('',cs=>{
-    const ids=[], pairChanges=[], hits=new Map(), replaced=[], removed=[], relinked=[];
+    const ids=[], pairChanges=[], hits=new Map(), replaced=[], removed=[], relinked=[]; let autos=0;
     for(const m of rv.missing||[]) if(rv.dropMissing.has(m.id)&&S.movements.has(m.id)){ removed.push(clone(S.movements.get(m.id))); cs.del('movements',m.id); }
     /* Los que ya estaban con cambios del banco: nueva huella, saldo, fecha y concepto del banco; se conserva todo lo demás */
     for(const x of rv.rows) if(x.relink&&S.movements.has(x.relink.id)){
@@ -3552,14 +3630,18 @@ async function confirmImport(fi){
       if(x.manual&&!rv.keepManual.has(x.i)&&S.movements.has(x.manual.id)){
         const mm=S.movements.get(x.manual.id); replaced.push(clone(mm));
         m.notes=mm.notes; m.reviewed=mm.reviewed; m.extra=mm.extra; m.notExtra=mm.notExtra; if(mm.concept) m.concept=mm.concept; if(mm.valueDate&&!m.valueDate) m.valueDate=mm.valueDate; if(mm.exportId){ m.exportId=mm.exportId; if(m.categoryId!==mm.categoryId||m.payee!==mm.payee) m.changedAfterExport=true; }
+        /* Transferencia apuntada a mano: el del banco se queda con su pareja */
+        if(isT&&mm.kind==='transferencia'&&mm.transferPairId) m.transferPairId=mm.transferPairId;
         cs.del('movements',mm.id);
       }
-      if(isT&&m.transferAccountId){
+      if(isT&&m.transferAccountId&&!m.transferPairId){
         const o=findCounterpart({accountId:acc.id,date:m.date,amountCents:m.amountCents,hay:ruleHay(m),transferAccountId:m.transferAccountId},true);
         if(o){ const pid=uid(); pairChanges.push({id:o.id,before:clone(o)});
           cs.put('movements',{...clone(o),kind:'transferencia',categoryId:null,transferPairId:pid,transferAccountId:acc.id,changedAfterExport:o.exportId?true:o.changedAfterExport});
           m.transferPairId=pid; bumpData(); }
       }
+      /* Sin pareja y la otra cuenta no tiene archivos hasta esa fecha: se apunta la otra mitad para que el dinero no desaparezca */
+      if(isT&&!m.transferPairId&&needsCounterpart(m)){ const pid=uid(); m.transferPairId=pid; const cp=counterpartFor(m,pid,now); cs.put('movements',cp); ids.push(cp.id); autos++; }
       cs.put('movements',m); ids.push(m.id);
     }
     for(const [rid,n] of hits){ const r=S.rules.get(rid); if(r) cs.put('rules',{...clone(r),hits:r.hits+n}); }
@@ -3576,7 +3658,7 @@ async function confirmImport(fi){
     }
     cs.put('imports',{id:importId,at:now,fileName:f.name,fileHash:f.hash,importer:an.importerId,bank:im.bank,accountId:acc.id,from:an.from,to:an.to,
       rows:an.rows.length,added:news.length,duplicates:rv.dupCount,movementIds:ids,pairChanges,checkId,openingBefore,hintAdded,warnings:rv.warnings,replaced,removed,relinked});
-    const tail=(diff==null?'':diff===0?' · el saldo cuadra':` · descuadre de ${money(Math.abs(diff))}`)+(replaced.length?` · ${replaced.length} sustituyen a apuntados a mano`:'')+(removed.length?` · ${removed.length} anulados quitados`:'')+(relinked.length?` · ${relinked.length} actualizados con los cambios del banco`:'');
+    const tail=(diff==null?'':diff===0?' · el saldo cuadra':` · descuadre de ${money(Math.abs(diff))}`)+(replaced.length?` · ${replaced.length} sustituyen a apuntados a mano`:'')+(removed.length?` · ${removed.length} anulados quitados`:'')+(relinked.length?` · ${relinked.length} actualizados con los cambios del banco`:'')+(autos?` · ${autos} ${autos===1?'contrapartida creada':'contrapartidas creadas'} en la otra cuenta`:'');
     return (news.length?`${news.length} movimientos importados en ${acc.name}`:`Archivo registrado sin movimientos nuevos`)+tail;
   });
   if(!ok) return;
@@ -3600,9 +3682,11 @@ async function undoImport(id){
   if(!await askConfirm('Deshacer importación',`<p>Se quitarán los ${NF_INT.format(ids.length)} movimientos que añadió «${esc(im.fileName)}»${(im.pairChanges||[]).length?' y las transferencias que emparejó volverán a como estaban':''}.${exp?` <b>${exp} ya se exportaron a Bluecoins</b>: tendrás que borrarlos también allí.`:''}</p>`,'Deshacer importación',true)) return;
   commit('Importación deshecha',cs=>{
     const set=new Set(ids), restore=new Set((im.pairChanges||[]).map(p=>p.id));
+    /* Parejas de las transferencias manuales que se sustituyeron: vuelven con ellas, así que su otra mitad no se desempareja */
+    const backPairs=new Set((im.replaced||[]).map(b=>b.transferPairId).filter(Boolean));
     for(const mid of ids){
       const m=S.movements.get(mid); if(!m) continue;
-      if(m.transferPairId) for(const o of [...S.movements.values()].filter(o=>o.transferPairId===m.transferPairId&&!set.has(o.id)&&!restore.has(o.id))) cs.put('movements',{...clone(o),transferPairId:null});
+      if(m.transferPairId&&!backPairs.has(m.transferPairId)) for(const o of [...S.movements.values()].filter(o=>o.transferPairId===m.transferPairId&&!set.has(o.id)&&!restore.has(o.id))) cs.put('movements',{...clone(o),transferPairId:null});
       cs.del('movements',mid);
     }
     for(const pc of im.pairChanges||[]) if(S.movements.has(pc.id)){ const n=normMovement(pc.before); if(n) cs.put('movements',n); }
@@ -4377,6 +4461,7 @@ function renderHelp(){
   <tr><td><b>ING · cuenta</b></td><td>Archivo «movements-ddmmaaaa.xls». Trae el saldo y la categoría que pone ING.</td></tr>
   <tr><td><b>Trade Republic</b></td><td>Archivo «Exportación de transacción» (.csv). Trae todo el historial y un identificador de cada movimiento, pero no el saldo. Los intereses se apuntan netos (bruto menos retención).</td></tr></table>
   <p>Las transferencias entre tus cuentas se reconocen solas cuando el archivo trae el IBAN de la otra cuenta (Trade Republic) o cuando el mismo importe aparece en las dos cuentas con pocos días de diferencia. Para lo primero, pon los últimos 4 dígitos del IBAN de cada cuenta en <span class="path">Cuentas → (la cuenta) → Identificadores en los archivos del banco</span>.</p>
+  <p>Si la otra cuenta no tiene archivos del banco de esa fecha (por ejemplo, una cuenta de ahorro que no importas), la app apunta la otra mitad como <b>contrapartida automática</b>, para que el dinero salga de una cuenta y entre en la otra. Cuando importes el archivo de esa cuenta, su movimiento la sustituye. Lo mismo pasa con una transferencia que apuntes a mano: al importar el banco no se duplica. Si en <span class="path">Resumen → Avisos</span> aparece «transferencias que cuentan solo en una cuenta», pulsa <b>Apuntar la otra mitad</b>.</p>
 
   <h2>Historial de Bluecoins</h2>
   <p>El archivo de historial de Bluecoins se importa igual que los del banco, en <span class="path">Importar</span>. La app lo cruza con lo que ya has importado del banco:</p>
@@ -4455,6 +4540,11 @@ document.addEventListener('click',async e=>{
           return n?(add?`Etiquetas añadidas a ${n} movimientos`:`Etiquetas quitadas de ${n} movimientos`):false; }).then(ok=>{ if(ok){ bulkTags=[]; renderMovs(); } else showToast('No había nada que cambiar'); });
         return; }
       case 'bulk-extra': case 'bulk-noextra': setExtra([...selMov],a==='bulk-extra').then(ok=>{ if(!ok) showToast('No había nada que cambiar'); }); return;
+      case 'fix-transfers': {
+        const list=missingCounterparts(); if(!list.length){ showToast('No hay transferencias a medias'); return; }
+        const rows=list.slice(0,40).map(m=>{ const out=m.amountCents<0; return `<tr><td>${fmtDate(m.date)}</td><td>${esc(accName(out?m.accountId:m.transferAccountId))} → ${esc(accName(out?m.transferAccountId:m.accountId))}</td><td class="num">${money(Math.abs(m.amountCents))}</td></tr>`; }).join('');
+        if(!await askConfirm('Apuntar la otra mitad',`<p>Estas transferencias solo cuentan en una cuenta. Se apuntará la otra mitad en la cuenta que no tiene archivos del banco de esa fecha; cuando importes su archivo, el movimiento del banco la sustituirá. Podrás deshacerlo.</p><div class="tbl-wrap"><table class="tbl tbl-compact"><thead><tr><th>Fecha</th><th>De → a</th><th class="num">Importe</th></tr></thead><tbody>${rows}</tbody></table></div>${list.length>40?`<p class="faint">y ${list.length-40} más</p>`:''}`,'Apuntar')) return;
+        createCounterparts(list); return; }
       case 'bulk-rev': commit('',cs=>{ let n=0; for(const id of selMov){ const m=S.movements.get(id); if(m&&!m.reviewed){ cs.put('movements',{...clone(m),reviewed:true}); n++; } } return n?`${n} marcados como revisados`:false; }); return;
       case 'bulk-del': {
         const ids=[...selMov], exp=useBc()?ids.filter(id=>S.movements.get(id)?.exportId).length:0;
@@ -4609,7 +4699,7 @@ window.__fin={S,ui,receiptCover,parseAmount,centsToPlain,centsToComma,parseDateC
   bluecoinsCsv,movementsToBluecoinsRows,BC_HEADER,commit,undo,backupData,go,ready:()=>!!db,
   readBiff,readCfbStream,rkValue,IMPORTERS,analyzeFile,chainCheck,findHeader,hdrNorm,guessAccount,classifyRow,buildReview,confirmImport,undoImport,
   syncMerge,localSnapshot,syncNow,encryptPayload,decryptPayload,canonStr,useBc,syncState:()=>({cfg:syncCfg,status:syncRt.status,err:syncRt.err,halt:syncRt.halt,dirty:syncRt.dirty,busy:syncRt.busy}),
-  ruleMatches,matchRule,predictMovement,learnFromConcept,dupCandidates,isDup,cardInfo,availableAt,flows,totals,scopeIds,periodRange,insightsFor,budgets,budgetSpent,statsOf,budFlows,extraSuggestions,setExtra,balanceHist,openScopeDialog,applyRulesToFree,bcPlan,confirmBcImport,catLabel,findCounterpart,suggestRuleText,normRule,imp,splitLabels,normLabels,mergeLabels,allLabels};
+  ruleMatches,matchRule,predictMovement,learnFromConcept,dupCandidates,isDup,cardInfo,availableAt,flows,totals,scopeIds,periodRange,insightsFor,budgets,budgetSpent,statsOf,budFlows,extraSuggestions,setExtra,balanceHist,openScopeDialog,applyRulesToFree,bcPlan,confirmBcImport,catLabel,findCounterpart,missingCounterparts,unmatchedTransfers,createCounterparts,needsCounterpart,suggestRuleText,normRule,imp,splitLabels,normLabels,mergeLabels,allLabels};
 </script>
 </body>
 </html>

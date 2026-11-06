@@ -870,11 +870,107 @@ def flujo_estadisticas(browser):
     return estado
 
 
+def flujo_transferencias(browser):
+    """Transferencias: que cuenten en las dos cuentas, sin duplicarse ni comerse compras de la tarjeta."""
+    errores = []
+    ctx, p = nueva_pagina(browser, 1440, 900, errores)
+    print("Transferencias entre cuentas")
+    p.evaluate("""async () => { const F = window.__fin;
+      await F.commit('', cs => {
+        cs.put('accounts', F.normAccount({id:'B', name:'BBVA', bank:'bbva', kind:'corriente', openingCents:100000, openingDate:'2026-09-01', order:1}));
+        cs.put('accounts', F.normAccount({id:'I', name:'ING', bank:'ing', kind:'corriente', openingCents:50000, openingDate:'2026-09-01', order:2}));
+        cs.put('accounts', F.normAccount({id:'N', name:'Naranja', bank:'ing', kind:'ahorro', openingCents:0, openingDate:'2026-09-01', order:3}));
+        cs.put('accounts', F.normAccount({id:'T', name:'Tarjeta', bank:'bbva', kind:'tarjeta_credito', linkedAccountId:'B', order:4}));
+      }, {noUndo:true}); }""")
+    fichero = """(a) => { const F = window.__fin;
+      F.imp.files = [{name:a.name, hash:a.hash, analysis:{importerId:'bbva_cuenta', rows:a.rows.map((r,i)=>({valueDate:'', detail:'', bankCategory:'', bankBalanceCents:null, line:6+i, ...r})),
+        from:a.rows[0].date, to:a.rows[a.rows.length-1].date, warnings:[], chain:null, ident:''},
+        review:{accountId:a.acc, edits:new Map(Object.entries(a.edits||{}).map(([k,v])=>[+k,v])), showDups:false, page:0, setOpening:false, addHint:false, allLabels:[]}}];
+      const rv = F.buildReview(0); return rv.rows.map(x=>({kind:x.cls&&x.cls.kind, pair:x.cls&&x.cls.pairWith, manual:!!x.manual, cuenta:x.cls&&x.cls.transferAccountId})); }"""
+    total = "() => [...window.__fin.balancesAt('2026-12-31').values()].reduce((a,b)=>a+b,0)"
+    saldo = "(id) => window.__fin.balanceAt(id, '2026-12-31')"
+
+    # 1. Una compra de la tarjeta no se empareja con una transferencia recibida de otra persona
+    p.evaluate("""() => window.__fin.commit('', cs => cs.put('movements', window.__fin.normMovement({id:'compra', accountId:'T', date:'2026-11-03', amountCents:-3000, kind:'gasto', rawConcept:'COMPRA MERCADONA', source:'import'})), {noUndo:true})""")
+    cls = p.evaluate("""() => { const c = window.__fin.classifyRow({date:'2026-11-04', amountCents:3000, rawConcept:'TRANSFERENCIA RECIBIDA DE JUAN', detail:'', bankCategory:''}, 'I', new Set()); return [c.kind, c.pairWith]; }""")
+    ok(cls == ["ingreso", None], f"la compra de la tarjeta no se toma como pareja de una transferencia → {cls}")
+
+    # 2. Transferencia apuntada a mano y luego importada del banco: no se duplica
+    p.evaluate("""() => { const F = window.__fin; return F.commit('', cs => {
+        cs.put('movements', F.normMovement({id:'m1', accountId:'B', date:'2026-10-15', amountCents:-10000, kind:'transferencia', transferPairId:'pm', transferAccountId:'I', source:'manual', reviewed:true}));
+        cs.put('movements', F.normMovement({id:'m2', accountId:'I', date:'2026-10-15', amountCents:10000, kind:'transferencia', transferPairId:'pm', transferAccountId:'B', source:'manual', reviewed:true})); }, {noUndo:true}); }""")
+    ok(p.evaluate("() => window.__fin.isDup(window.__fin.S.movements.get('m1'))") is False, "transferencia manual sin gemelo: no es duplicado")
+    rv = p.evaluate(fichero, {"name": "b1.xlsx", "hash": "hb1", "acc": "B", "rows": [{"date": "2026-10-16", "amountCents": -10000, "rawConcept": "TRANSFERENCIA REALIZADA A ING"}]})
+    ok(rv == [{"kind": "transferencia", "pair": None, "manual": True, "cuenta": "I"}], f"la fila del banco sustituye a la transferencia manual → {rv}")
+    p.evaluate("() => window.__fin.confirmImport(0)")
+    p.wait_for_timeout(200)
+    r = p.evaluate(f"""() => {{ const F = window.__fin, s = {saldo};
+      const b = [...F.S.movements.values()].filter(m=>m.accountId==='B'&&m.kind==='transferencia'), m2 = F.S.movements.get('m2');
+      return [s('B'), s('I'), b.length, b[0].source, b[0].transferPairId === m2.transferPairId, F.S.movements.has('m1')]; }}""")
+    ok(r == [90000, 60000, 1, "import", True, False], f"BBVA baja 100 € una sola vez, ING sube 100 € y siguen emparejadas → {r}")
+    imp_id = p.evaluate("() => [...window.__fin.S.imports.values()].find(i=>i.fileName==='b1.xlsx').id")
+    p.evaluate("(id) => { window.__fin.undoImport(id); }", imp_id)
+    p.wait_for_selector("#cfmDlg[open]")
+    p.click("#cfmOk")
+    p.wait_for_timeout(300)
+    r = p.evaluate(f"""() => {{ const F = window.__fin, m1 = F.S.movements.get('m1'), m2 = F.S.movements.get('m2');
+      return [!!m1, m1 && m1.transferPairId, m2.transferPairId, ({saldo})('B')]; }}""")
+    ok(r == [True, "pm", "pm", 90000], f"deshacer la importación devuelve la transferencia manual con su pareja → {r}")
+
+    # 3. Transferencia a una cuenta sin archivos del banco: se apunta la otra mitad, y luego la sustituye el archivo de esa cuenta
+    rv = p.evaluate(fichero, {"name": "b2.xlsx", "hash": "hb2", "acc": "B", "rows": [{"date": "2026-10-20", "amountCents": -5000, "rawConcept": "TRASPASO A NARANJA"}],
+                              "edits": {"0": {"kind": "transferencia", "transferAccountId": "N"}}})
+    p.evaluate("() => window.__fin.confirmImport(0)")
+    p.wait_for_timeout(200)
+    r = p.evaluate(f"""() => {{ const F = window.__fin, n = [...F.S.movements.values()].filter(m=>m.accountId==='N');
+      return [({saldo})('N'), n.length, n[0] && n[0].source, !!n[0] && !!n[0].transferPairId]; }}""")
+    ok(r == [5000, 1, "manual", True], f"Naranja recibe los 50 € como contrapartida automática → {r}")
+    rv = p.evaluate(fichero, {"name": "n1.xlsx", "hash": "hn1", "acc": "N", "rows": [{"date": "2026-10-21", "amountCents": 5000, "rawConcept": "TRASPASO DESDE BBVA"}]})
+    ok(rv[0]["manual"] is True and rv[0]["kind"] == "transferencia", f"el archivo de Naranja sustituye a la contrapartida → {rv}")
+    p.evaluate("() => window.__fin.confirmImport(0)")
+    p.wait_for_timeout(200)
+    r = p.evaluate(f"""() => {{ const F = window.__fin, n = [...F.S.movements.values()].filter(m=>m.accountId==='N');
+      return [({saldo})('N'), n.length, n[0].source, F.missingCounterparts().length]; }}""")
+    ok(r == [5000, 1, "import", 0], f"Naranja sigue con 50 €, ahora con el movimiento del banco → {r}")
+
+    # 4. Datos que ya estaban a medias: aviso y «Apuntar la otra mitad»
+    p.evaluate("""() => { const F = window.__fin; return F.commit('', cs => cs.put('movements', F.normMovement({id:'suelta', accountId:'B', date:'2026-11-02', amountCents:-7000, kind:'transferencia', transferAccountId:'N', source:'import', rawConcept:'TRASPASO A NARANJA'})), {noUndo:true}); }""")
+    antes = p.evaluate(total)
+    r = p.evaluate("() => { const F = window.__fin; return [F.missingCounterparts().map(m=>m.id), F.insightsFor(F.scopeIds('resumen','resumen.avisos')).some(x=>x.act==='fix-transfers')]; }")
+    ok(r == [["suelta"], True], f"detecta la transferencia que solo cuenta en BBVA y avisa → {r}")
+    p.evaluate("() => window.__fin.createCounterparts()")
+    p.wait_for_timeout(200)
+    ok(p.evaluate(total) == antes + 7000 and p.evaluate(saldo, "N") == 12000, "al apuntar la otra mitad, el patrimonio recupera los 70 €")
+
+    # 5. Cambiar a gasto una transferencia importada y emparejada deshace la pareja en los dos lados
+    p.evaluate("""() => { const F = window.__fin; return F.commit('', cs => {
+        cs.put('movements', F.normMovement({id:'a', accountId:'B', date:'2026-10-25', amountCents:-20000, kind:'transferencia', transferPairId:'pp', transferAccountId:'I', source:'import', rawConcept:'TRANSF A ING'}));
+        cs.put('movements', F.normMovement({id:'b', accountId:'I', date:'2026-10-25', amountCents:20000, kind:'transferencia', transferPairId:'pp', transferAccountId:'B', source:'import', rawConcept:'TRANSF DE BBVA'})); }, {noUndo:true}); }""")
+    p.evaluate("() => window.__fin.go('movimientos')")
+    p.wait_for_selector('tr[data-mov="a"]')
+    p.click('tr[data-mov="a"] td:nth-child(3)')
+    p.wait_for_selector('#movDlg[open]')
+    p.click('#movKind button[data-kind=gasto]')
+    p.click('#movSave')
+    p.wait_for_timeout(300)
+    r = p.evaluate("() => { const F = window.__fin, a = F.S.movements.get('a'), b = F.S.movements.get('b'); return [a.kind, a.transferPairId, b.kind, b.transferPairId, F.unmatchedTransfers().some(m=>m.id==='b')]; }")
+    ok(r == ["gasto", None, "transferencia", None, True], f"la otra mitad queda como transferencia sin pareja para revisarla → {r}")
+
+    # 6. Lo que sale de la tarjeta por transferencia también queda pendiente de cargar
+    pend = p.evaluate("""async () => { const F = window.__fin;
+      await F.commit('', cs => cs.put('movements', F.normMovement({id:'tt', accountId:'T', date:'2026-11-05', amountCents:-2500, kind:'transferencia', transferAccountId:'I', source:'manual'})), {noUndo:true});
+      return F.cardInfo('T', '2026-11-30').pending; }""")
+    ok(pend == -5500, f"pendiente de la tarjeta con la compra y la transferencia que sale de ella → {pend}")
+    ok(not errores, "sin errores en la consola (transferencias): " + "; ".join(errores[:3]))
+    ctx.close()
+
+
 with sync_playwright() as pw:
     b = pw.chromium.launch()
     flujo_importacion(b)
     flujo_orden_banco(b)
     flujo_ciclo_tarjeta(b)
+    flujo_transferencias(b)
     est = flujo_pc(b)
     est2 = flujo_estadisticas(b)
     flujo_estrecho(b, est)
