@@ -711,10 +711,24 @@ def flujo_estadisticas(browser):
     ok(p.is_hidden("#movDup"), "con otro importe ya no avisa")
     p.click("[data-close]:has-text('Cancelar') >> nth=0")
 
+    # Fechas de las cabeceras
+    r = p.evaluate(f"""() => {{ const F={F}; return [F.rangeTxt('2026-11-10','2026-11-10'), F.rangeTxt('2026-11-01','2026-11-10'),
+      F.rangeTxt('2026-10-01','2026-11-10'), F.rangeTxt('2025-12-01','2026-11-10'), F.rangeTxt('2026-09-01','2026-09-30'),
+      F.prevRange('2026-11-01','2026-11-10','2026-11-30'), F.prevRange('2026-10-01','2026-10-31')]; }}""")
+    ok(r[:5] == ["10 nov 2026", "1–10 nov 2026", "1 oct – 10 nov 2026", "1 dic 2025 – 10 nov 2026", "1–30 sept 2026"], f"texto de los tramos de fechas → {r[:5]}")
+    ok(r[5] == ["2026-10-01", "2026-10-10"] and r[6] == ["2026-09-01", "2026-09-30"], f"el mes en curso se compara con los mismos días del anterior; un mes cerrado, con el anterior entero → {r[5:]}")
+
     # Estadísticas en pantalla
     p.click(".nav-btn[data-view=estadisticas]")
     p.select_option("[data-st=period]", "mesant")
     p.wait_for_timeout(200)
+    sin = p.evaluate("() => [...document.querySelectorAll('#view .vcard')].filter(c=>!c.querySelector('.vcard-head .vper')).map(c=>c.querySelector('h2').textContent)")
+    ok(sin == [], f"todos los paneles de Estadísticas muestran sus fechas en la cabecera (sin fechas: {sin})")
+    mesant = p.evaluate(f"() => {{ const F={F}, [f,t]=F.periodRange('mesant'), [pf,pt]=F.prevRange(f,t); return [F.rangeTxt(f,t), F.rangeTxt(pf,pt), F.rangeTxt(F.addDays(f,-365).slice(0,4)+f.slice(4), (+t.slice(0,4)-1)+t.slice(4))]; }}")
+    cab = p.inner_text(".vcard:has-text('Resumen del periodo') .vper")
+    ok(all(x in cab for x in mesant), f"la cabecera del resumen del periodo dice el periodo y con qué se compara → {cab}")
+    th = p.inner_text(".comp-table thead")
+    ok(mesant[1] in th and mesant[2] in th, "las columnas de variación dicen con qué fechas comparan")
     txt = p.inner_text("#view").replace("\xa0", " ")
     ok("1.480,00 €" in txt and "2.000,00 €" in txt, "las cifras del periodo aparecen en pantalla")
     ok(p.locator(".viz svg").count() >= 6, f"gráficos dibujados ({p.locator('.viz svg').count()})")
@@ -762,6 +776,8 @@ def flujo_estadisticas(browser):
     # Balance
     p.click(".nav-btn[data-view=balance]")
     p.wait_for_selector(".vcard:has-text('Evolución del patrimonio') svg")
+    sin = p.evaluate("() => [...document.querySelectorAll('#view .vcard')].filter(c=>!c.querySelector('.vcard-head .vper')).map(c=>c.querySelector('h2').textContent)")
+    ok(sin == [], f"todos los paneles de Balance muestran sus fechas (sin fechas: {sin})")
     ok("aproximado" in p.inner_text("#view"), "avisa de que el saldo anterior a la apertura es aproximado")
     p.click("[data-bal-mode=cuentas]")
     ok(p.locator(".vcard:has-text('Evolución del patrimonio') .legend .lg").count() == 3, "evolución por cuenta con leyenda")
@@ -776,6 +792,15 @@ def flujo_estadisticas(browser):
     ok("Ahorro previsto" in p.inner_text("#propCalc"), "calcula el ahorro previsto")
     p.click("#propForm button[type=submit]")
     p.wait_for_selector("text=3 presupuestos creados")
+    sin = p.evaluate("() => [...document.querySelectorAll('#view .vcard')].filter(c=>!c.querySelector('.vcard-head .vper')).map(c=>c.querySelector('h2').textContent)")
+    ok(sin == [], f"todos los paneles de Presupuestos muestran sus fechas (sin fechas: {sin})")
+    p.click(".nav-btn[data-view=resumen]")
+    p.wait_for_timeout(150)
+    sin = p.evaluate("() => [...document.querySelectorAll('#view .vcard')].filter(c=>!c.querySelector('.vcard-head .vper')).map(c=>c.querySelector('h2').textContent)")
+    ok(sin == [], f"todos los paneles del Resumen muestran sus fechas (sin fechas: {sin})")
+    ok("mismos días del mes anterior" in p.inner_text("#view"), "el resumen del mes dice que compara con los mismos días del mes anterior")
+    p.click(".nav-btn[data-view=presupuestos]")
+    p.wait_for_timeout(150)
     ok(p.evaluate(f"() => {F}.budgets().map(b=>b.amountCents).sort((a,b)=>a-b)") == [10000, 30000, 75000], "presupuestos con la mediana redondeada a 5 €")
     p.click("[data-act=bud-edit] >> nth=0")
     p.wait_for_selector("#budDlg[open]")
