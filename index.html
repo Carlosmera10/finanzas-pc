@@ -1742,6 +1742,19 @@ const manualTwins=()=>cached('twins',()=>{ const out=new Set(); for(const m of S
   const t=dupCandidates({id:m.id,pairId:m.transferPairId,accountId:m.accountId,date:m.date,amountCents:m.amountCents},5).find(x=>x.source==='import'&&!x.notDup); if(t){ out.add(m.id); out.add(t.id); } } return out; });
 const dupKey=m=>m.accountId+'|'+m.date+'|'+m.amountCents+'|'+normText(movConcept(m));
 const isDup=m=>!m.notDup&&dupKeys().has(m.accountId+'|'+m.date+'|'+m.amountCents+'|'+normText(movConcept(m)))||manualTwins().has(m.id);
+/* Tarjetas de cargo mensual cuyo último archivo es de un día anterior al último archivo de su cuenta de cargo:
+   probablemente se ha importado la cuenta y no la tarjeta, así que a lo pendiente de cargar le faltan las compras recientes */
+function staleCards(){
+  const li=lastImportByAcc(), day=i=>ymd(new Date(i.at)), out=[];
+  for(const c of accSorted()){
+    if(!isMonthlyCard(c)||!c.linkedAccountId) continue;
+    const ci=li.get(c.id), hi=li.get(c.linkedAccountId), host=S.accounts.get(c.linkedAccountId);
+    if(!ci||!hi||!host||!ci.at||!hi.at) continue;
+    if(day(hi)>day(ci)) out.push({card:c,host,cardDay:day(ci),hostDay:day(hi)});
+  }
+  return out;
+}
+const staleCardText=x=>`${x.card.name}: su último archivo se importó el ${fmtDate(x.cardDay)} y el de ${x.host.name}, el ${fmtDate(x.hostDay)}. Importa también el «Listado de movimientos» de la tarjeta; si no, a lo pendiente de cargar le faltan las compras recientes.`;
 const lastImportByAcc=()=>cached('lastImp',()=>{ const out=new Map(); for(const i of S.imports.values()){ if(!i.accountId) continue; const p=out.get(i.accountId); if(!p||(i.at||'')>(p.at||'')) out.set(i.accountId,i); } return out; });
 function lastCheck(accId){ let best=null; for(const c of S.checks.values()) if(c.accountId===accId&&(!best||c.date>best.date||(c.date===best.date&&c.createdAt>best.createdAt))) best=c; return best; }
 function checkLive(c){ const app=balanceAt(c.accountId,c.date); return {app,diff:app-c.realCents,bcDiff:c.bluecoinsCents==null?null:c.bluecoinsCents-c.realCents}; }
@@ -2268,6 +2281,7 @@ function insightsFor(ids){
   if(unm.length) out.push({sev:'warn',text:`${unm.length===1?'Una transferencia sin pareja':unm.length+' transferencias sin pareja'}: ${unm.length===1?'resta o suma':'restan o suman'} en una sola cuenta. Indica la otra cuenta o cámbiala a gasto o ingreso.`,view:'movimientos',state:'sinpareja'});
   const noCat=all.filter(x=>!x.cat&&x.d>=addDays(today,-90)).length; if(noCat) out.push({sev:'info',text:`${noCat} movimientos de los últimos 90 días sin categoría.`,view:'movimientos',state:'sincat'});
   const bad=accSorted().filter(a=>ids.has(a.id)&&lastCheck(a.id)&&checkLive(lastCheck(a.id)).diff!==0); if(bad.length) out.push({sev:'crit',text:`Saldo descuadrado en ${bad.map(a=>a.name).join(', ')}.`,view:'controles'});
+  for(const x of staleCards()) if(ids.has(x.card.id)||ids.has(x.host.id)) out.push({sev:'crit',text:staleCardText(x),view:'importar'});
   const li=lastImportByAcc(); for(const a of accSorted()){ const l=li.get(a.id); if(ids.has(a.id)&&l&&daysBetween(ymd(new Date(l.at)),today)>35) out.push({sev:'info',text:`${a.name}: hace ${daysBetween(ymd(new Date(l.at)),today)} días de la última importación.`,view:'importar'}); }
   const order={crit:0,warn:1,info:2}; return out.sort((a,b)=>order[a.sev]-order[b.sev]);
 }
@@ -3545,6 +3559,7 @@ function renderImport(){
       :`<button class="btn sec sm" data-act="pick-folder"${window.showDirectoryPicker?'':' disabled'}>Elegir carpeta de importación</button>`}
       ${imp.busy?'<span class="muted">Leyendo…</span>':''}
     </div>
+    ${(()=>{ const st=staleCards(); return st.length?`<ul class="warns stale-cards">${st.map(x=>`<li>${icon('alert','ic xs')}${esc(staleCardText(x))}</li>`).join('')}</ul>`:''; })()}
     ${imp.files.length?`<section class="view-sec"><div class="sec-head"><h2>Archivos</h2><button class="btn ghost sm" data-act="clear-files">${icon('x')}Vaciar la lista</button></div>
       <div class="file-list">${imp.files.map((x,i)=>{
         const im=x.analysis&&importerOf(x.analysis.importerId), done=fileImported(x);
@@ -4555,6 +4570,7 @@ function renderHelp(){
   <p>BBVA cobra lo gastado con cada tarjeta en un solo cargo a principios del mes siguiente («Recibo mes anterior»). Por eso:</p>
   <ul><li>El <b>saldo</b> de una tarjeta es lo <b>pendiente de cargar</b>: lo gastado que el banco aún no ha cobrado. El recibo no cobra justo el mes natural (las compras de los últimos días del mes suelen pasar al recibo siguiente): la app mira qué compras suman el importe de cada recibo y cuenta como pendiente todo lo demás. Entre el día 1 y el día del recibo incluye también lo del mes anterior.</li>
   <li>En <span class="path">Resumen → Tarjetas</span> ves lo gastado este mes en cada tarjeta, hasta qué día llega el último archivo y el <b>disponible real</b> de la cuenta: su saldo menos lo pendiente de las tarjetas.</li>
+  <li>Importa el «Listado de movimientos» de cada tarjeta <b>el mismo día</b> que el de la cuenta. Si la cuenta tiene un archivo de un día posterior al de una tarjeta, sale un aviso en el Resumen y en Importar: a lo pendiente de cargar le faltarían las compras de esos días.</li>
   <li>Para ver si estás cerca del límite: <span class="path">Cuentas → lápiz de la tarjeta → Límite de la tarjeta al mes (€)</span> → <b>Guardar</b>. Aparece una barra con lo que queda y un aviso a partir del 80 %.</li>
   <li>La tarjeta tiene que ser de tipo <b>Tarjeta de crédito</b> y tener elegida la cuenta en <b>Se carga en la cuenta</b>.</li></ul>
 
@@ -4843,7 +4859,7 @@ window.__fin={S,ui,receiptCover,parseAmount,centsToPlain,centsToComma,parseDateC
   bluecoinsCsv,movementsToBluecoinsRows,BC_HEADER,commit,undo,backupData,go,ready:()=>!!db,
   readBiff,readCfbStream,rkValue,IMPORTERS,analyzeFile,chainCheck,findHeader,hdrNorm,guessAccount,classifyRow,buildReview,confirmImport,undoImport,
   syncMerge,localSnapshot,syncNow,encryptPayload,decryptPayload,canonStr,useBc,syncState:()=>({cfg:syncCfg,status:syncRt.status,err:syncRt.err,halt:syncRt.halt,dirty:syncRt.dirty,busy:syncRt.busy}),
-  ruleMatches,matchRule,predictMovement,learnFromConcept,dupCandidates,isDup,cardInfo,availableAt,flows,totals,scopeIds,periodRange,insightsFor,budgets,budgetSpent,statsOf,budFlows,extraSuggestions,setExtra,balanceHist,openScopeDialog,applyRulesToFree,bcPlan,confirmBcImport,catLabel,findCounterpart,missingCounterparts,unmatchedTransfers,createCounterparts,needsCounterpart,suggestRuleText,normRule,imp,splitLabels,normLabels,mergeLabels,allLabels,accDailySeries,balDefaultAccs,balAccIds,payeeCandidates,payeeIndex};
+  ruleMatches,matchRule,predictMovement,learnFromConcept,dupCandidates,isDup,cardInfo,availableAt,flows,totals,scopeIds,periodRange,insightsFor,budgets,budgetSpent,statsOf,budFlows,extraSuggestions,setExtra,balanceHist,openScopeDialog,applyRulesToFree,bcPlan,confirmBcImport,catLabel,findCounterpart,missingCounterparts,unmatchedTransfers,createCounterparts,needsCounterpart,suggestRuleText,normRule,imp,splitLabels,normLabels,mergeLabels,allLabels,accDailySeries,balDefaultAccs,balAccIds,payeeCandidates,payeeIndex,staleCards};
 </script>
 </body>
 </html>

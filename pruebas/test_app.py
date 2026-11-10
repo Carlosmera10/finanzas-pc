@@ -1052,6 +1052,22 @@ def flujo_beneficiarios_y_cuentas(browser):
     p.wait_for_timeout(300)
     sin_desborde(p, "Estrecha balance (cuentas)")
     p.screenshot(path=os.path.join(CAPT, "estrecha-balance-cuentas.png"), full_page=True)
+    # Aviso: la tarjeta lleva un archivo más antiguo que su cuenta de cargo
+    p.set_viewport_size({"width": 1440, "height": 900})
+    p.evaluate(f"""() => {{ const F={F};
+      const acc=[F.normAccount({{id:'cta',name:'Cuenta cargo',bank:'bbva',kind:'corriente',openingCents:0,openingDate:'2026-01-01',order:30}}),
+        F.normAccount({{id:'tc',name:'Tarjeta ··9999',bank:'bbva',kind:'tarjeta_credito',linkedAccountId:'cta',matchHints:['9999'],order:31}})];
+      const imp=(id,accountId,at)=>({{id,at,fileName:id+'.xlsx',fileHash:id,importer:'bbva_cuenta',bank:'bbva',accountId,from:'2026-10-01',to:at.slice(0,10),added:1,duplicates:0,pairChanges:[],warnings:[],removed:[]}});
+      return F.commit('', cs => {{ for (const a of acc) cs.put('accounts', a); cs.put('imports', imp('i1','tc','2026-11-06T22:44:00.000Z')); cs.put('imports', imp('i2','cta','2026-11-10T09:09:00.000Z')); }}, {{noUndo:true}}); }}""")
+    r = p.evaluate(f"() => {F}.staleCards().map(x => [x.card.id, x.cardDay, x.hostDay])")
+    ok(r == [["tc", "2026-11-06", "2026-11-10"]], f"detecta la tarjeta sin el archivo del día → {r}")
+    p.click(".nav-btn[data-view=resumen]")
+    ok("Tarjeta ··9999: su último archivo se importó el 06/11/2026 y el de Cuenta cargo, el 10/11/2026" in p.inner_text("#view"), "aviso en el Resumen")
+    p.click(".nav-btn[data-view=importar]")
+    ok(p.locator(".stale-cards li").count() == 1, "y en Importar")
+    p.evaluate(f"""() => {F}.commit('', cs => cs.put('imports', {{id:'i3',at:'2026-11-10T09:16:00.000Z',fileName:'t.xlsx',fileHash:'t',importer:'bbva_tarjeta',bank:'bbva',accountId:'tc',from:'2026-10-01',to:'2026-11-09',added:1,duplicates:0,pairChanges:[],warnings:[],removed:[]}}), {{noUndo:true}})""")
+    p.click(".nav-btn[data-view=resumen]"); p.click(".nav-btn[data-view=importar]")
+    ok(p.locator(".stale-cards").count() == 0 and p.evaluate(f"() => {F}.staleCards().length") == 0, "al importar la tarjeta ese mismo día, el aviso desaparece")
     ok(not errores, "sin errores en la consola (beneficiarios y cuentas): " + "; ".join(errores[:3]))
     ctx.close()
 

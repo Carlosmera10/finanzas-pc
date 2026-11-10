@@ -41,7 +41,7 @@ App de finanzas (PWA para Chrome en el PC y en el móvil Android), que puede usa
 - **Gastos extraordinarios:** los movimientos marcados como extraordinarios no cuentan en los presupuestos (ni en el gasto del mes ni en el histórico de la propuesta). La app propone los candidatos: gastos de más de 250 € que superan el triple del mes habitual (mediana de 24 meses) y su variación normal (MAD), salvo los que se repiten cada año.
 - **Alta rápida de movimientos:** al escribir el beneficiario se rellenan tipo, cuenta o tarjeta, categoría, etiquetas e importe con lo más habitual (con más peso a lo reciente).
 - **Control de duplicados:** aviso al apuntar a mano; al importar, el movimiento del banco sustituye al apuntado a mano y se proponen quitar los cargos que ya no aparecen (anulados); marca «No es duplicado».
-- **Tarjetas de cargo mensual:** su saldo es lo pendiente de cargar; lo gastado en el mes, límite con aviso y disponible real de la cuenta donde se cargan.
+- **Tarjetas de cargo mensual:** su saldo es lo pendiente de cargar; lo gastado en el mes, límite con aviso, disponible real de la cuenta donde se cargan y aviso si la cuenta tiene un archivo más reciente que la tarjeta.
 - **Qué cuentas se suman:** cada página y cada gráfico o tabla puede usar su propia selección de cuentas, con conjuntos guardados.
 - Gráficos SVG propios (sin librerías), con información al pasar el ratón y vista de tabla.
 - **Controles de saldo:** comparan el saldo real del banco (y el de Bluecoins) con el de la app y proponen posibles causas si no cuadra.
