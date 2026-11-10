@@ -29,13 +29,14 @@ App de finanzas (PWA para Chrome en el PC y en el móvil Android), que puede usa
   - Importadores de **BBVA (cuenta y tarjetas)**, **ING (cuenta)** y **Trade Republic** (CSV), reconocidos por el contenido del archivo.
   - Revisión antes de confirmar: cuenta propuesta, nuevos frente a los que ya estaban (descargas que se solapan), saldo encadenado, saldo de apertura y avisos.
   - Transferencias entre cuentas propias y liquidaciones de tarjeta emparejadas automáticamente. Si la otra cuenta no tiene archivos del banco de esa fecha, se apunta la otra mitad («contrapartida automática») y el archivo de esa cuenta la sustituye al importarlo; las transferencias apuntadas a mano tampoco se duplican al importar.
+  - Sugerencias de beneficiario en la revisión (sin distinguir tildes, por uso; con el campo vacío, las del concepto) que rellenan la categoría habitual si falta.
   - Control de saldo automático al importar y «Deshacer importación».
 - **Historial de Bluecoins:** importa un archivo con todo lo apuntado en Bluecoins y lo cruza con lo importado del banco (completa los movimientos que coinciden, añade el resto como histórico y lista lo que solo está en Bluecoins). Con «Deshacer importación».
 - **Reglas** de categorización (contiene / empieza por / expresión regular), con «Crear regla» desde un movimiento.
 - **Etiquetas** con espacios y emojis (como en Bluecoins), con sugerencias de las existentes: en la importación (por fila o para todos los nuevos), automáticas por cuenta, en bloque, filtro por etiqueta y gestión (crear, renombrar, eliminar).
 - **Resumen:** patrimonio, mes y año con variaciones, ingresos y gastos de 12 meses, gasto del mes por categoría frente a su media, presupuesto del mes y avisos.
 - **Estadísticas:** periodos (mes, 3/6/12 meses, año, todo, personalizado), ingresos y gastos por mes, ahorro y tasa de ahorro, composición por categoría con subcategorías y variaciones, evolución por categoría, mapa de calor, beneficiarios, etiquetas, días de la semana, gastos más grandes y avisos.
-- **Balance:** evolución del patrimonio (total o por cuenta), activos y deudas, variación de cada cuenta.
+- **Balance:** evolución del patrimonio (total o por cuenta), saldo diario del último año de cada cuenta elegida (por defecto BBVA, ING Cuenta Nómina y Trade Republic), activos y deudas, variación de cada cuenta.
 - **Presupuestos:** mensuales por categoría o subcategoría, con propuesta calculada del histórico (media, mediana, percentil 75), previsión a fin de mes y estado.
 - **Gastos extraordinarios:** los movimientos marcados como extraordinarios no cuentan en los presupuestos (ni en el gasto del mes ni en el histórico de la propuesta). La app propone los candidatos: gastos de más de 250 € que superan el triple del mes habitual (mediana de 24 meses) y su variación normal (MAD), salvo los que se repiten cada año.
 - **Alta rápida de movimientos:** al escribir el beneficiario se rellenan tipo, cuenta o tarjeta, categoría, etiquetas e importe con lo más habitual (con más peso a lo reciente).

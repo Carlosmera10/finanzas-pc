@@ -850,7 +850,7 @@ def flujo_estadisticas(browser):
     # Resumen
     p.keyboard.press("Alt+1")
     # Las barras de categorías son del mes en curso: los primeros días del mes aún no hay gastos en los datos de prueba
-    hb_min = 3 if p.evaluate("() => new Date().getDate()") >= 10 else 0
+    hb_min = 3 if p.evaluate("() => new Date().getDate()") >= 15 else 0
     ok(p.locator(".vcard").count() >= 6 and p.locator(".hb").count() >= hb_min, "resumen con patrimonio, mes, año, gráfico, categorías y avisos")
     p.screenshot(path=os.path.join(CAPT, "pc-resumen.png"), full_page=True)
     p.keyboard.press("Alt+2")
@@ -964,6 +964,97 @@ def flujo_transferencias(browser):
     ok(not errores, "sin errores en la consola (transferencias): " + "; ".join(errores[:3]))
     ctx.close()
 
+def flujo_beneficiarios_y_cuentas(browser):
+    errores = []
+    ctx, p = nueva_pagina(browser, 1440, 900, errores)
+    print("Sugerencias de beneficiario al importar y gráficas de un año por cuenta")
+    F = "window.__fin"
+    p.evaluate(f"""() => {{ const F={F};
+      const acc = [{{id:'X', name:'Otra', kind:'corriente', bank:'otro', openingCents:0, openingDate:'2026-01-01', order:9}}].map(F.normAccount);
+      const cat = [{{id:'edu', name:'Educación'}}, {{id:'cole', name:'Colegio', parent:'edu'}}, {{id:'ocio', name:'Ocio'}}, {{id:'bar', name:'Bares', parent:'ocio'}}].map(F.normCategory);
+      const mv = (id, date, payee, cat) => F.normMovement({{id, accountId:'X', date, amountCents:-1000, kind:'gasto', categoryId:cat, payee, concept:payee, source:'manual'}});
+      const ms = [mv('s1','2026-08-01','Colegio Ficticio','cole'), mv('s2','2026-08-08','Colegio Ficticio','cole'),
+        mv('c1','2026-08-02','Cafetería Ángel','bar'), mv('c2','2026-08-03','Cafetería Ángel','bar'), mv('c3','2026-08-04','Cafeteria Sol','bar')];
+      return F.commit('', cs => {{ for (const a of acc) cs.put('accounts', a); for (const c of cat) cs.put('categories', c); for (const m of ms) cs.put('movements', m); }}, {{noUndo:true}}); }}""")
+    # Motor: sin distinguir tildes, primero lo que empieza igual, y el nombre más usado
+    r = p.evaluate(f"() => {F}.payeeCandidates('cafeteria').map(o => o.name)")
+    ok(r == ["Cafetería Ángel", "Cafeteria Sol"], f"busca sin tildes y ordena por uso → {r}")
+    r = p.evaluate(f"() => {F}.payeeCandidates('angel').map(o => o.name)")
+    ok(r == ["Cafetería Ángel"], "encuentra también por una palabra del medio")
+    r = p.evaluate(f"() => {F}.payeeCandidates('', {{rawConcept:'Adeudo colegio ficticio · Adeudo nº 0000000000000002'}}).map(o => o.name)")
+    ok(r == ["Colegio Ficticio"], f"con el campo vacío propone el beneficiario que aparece en el concepto → {r}")
+    # En la revisión de la importación
+    p.click(".nav-btn[data-view=importar]")
+    importar(p, "bbva-cuenta-septiembre.xlsx")
+    p.click("[data-act=rv-new-acc]")
+    p.click("#accForm button[type=submit]")
+    p.wait_for_function("document.querySelector('#rvAcc') && document.querySelector('#rvAcc').value !== ''")
+    ok(p.locator("input[data-payee-sug]").count() > 0 and p.locator("input[data-rv=payee][list]").count() == 0, "el beneficiario usa la lista propia de sugerencias")
+    fila = "tr:has-text('Adeudo nº 0000000000000002') input[data-payee-sug]"
+    p.click(fila)
+    p.wait_for_selector("#payeeSug:not([hidden])")
+    txt = p.inner_text("#payeeSug")
+    ok("sugerencias para este concepto" in txt.lower() and "Colegio Ficticio" in txt and "Educación › Colegio" in txt, "al entrar en el campo vacío propone el del concepto con su categoría")
+    p.click("#payeeSug [data-payee-opt='Colegio Ficticio']")
+    p.wait_for_timeout(100)
+    ok(p.input_value(fila) == "Colegio Ficticio", "al elegir la sugerencia se escribe el beneficiario")
+    ok(p.input_value("tr:has-text('Adeudo nº 0000000000000002') select[data-rv=categoryId]") == "cole", "y, como no tenía categoría, se pone la habitual")
+    ok(p.evaluate("() => document.activeElement && document.activeElement.matches('input[data-payee-sug]')"), "el cursor sigue en el beneficiario")
+    fila2 = "tr:has-text('cena amigos') input[data-payee-sug]"
+    p.click(fila2)
+    p.keyboard.type("cafeteria")
+    p.wait_for_selector("#payeeSug:not([hidden]) >> text=Cafetería Ángel")
+    p.keyboard.press("ArrowDown")
+    p.keyboard.press("Enter")
+    p.wait_for_timeout(100)
+    ok(p.input_value(fila2) == "Cafeteria Sol", "flechas e Intro eligen la sugerencia")
+    p.keyboard.press("Escape")
+    ok(p.is_hidden("#payeeSug"), "Escape cierra las sugerencias")
+    p.click("[data-act=rv-confirm]")
+    p.wait_for_selector("text=movimientos importados")
+    r = p.evaluate("() => [...window.__fin.S.movements.values()].filter(m => m.payee === 'Colegio Ficticio' && m.source === 'import').map(m => m.categoryId)")
+    ok(r == ["cole"], "se guarda al confirmar")
+    sin_desborde(p, "PC importar (sugerencias)")
+    ctx.close()
+
+    # Gráficas de un año por cuenta (Balance)
+    ctx, p = nueva_pagina(browser, 1440, 900, errores)
+    p.evaluate(SEMILLA_STATS_JS)
+    r = p.evaluate(f"""() => {{ const F={F}, today=F.ymd(new Date()), days=[]; for (let d=F.addDays(today,-365); d<=today; d=F.addDays(d,1)) days.push(d);
+      const bad=[]; for (const a of F.S.accounts.values()) {{ const s=F.accDailySeries(a,days); days.forEach((d,i)=>{{ if (s[i]!==F.balanceHist(a,d)) bad.push(a.id+' '+d+' '+s[i]+' '+F.balanceHist(a,d)); }}); }}
+      return bad.slice(0,3); }}""")
+    ok(r == [], f"saldo diario igual que el del Balance, también antes de la apertura → {r}")
+    ok(sorted(p.evaluate(f"() => {F}.balDefaultAccs()")) == ["A", "B"], "sin cuentas de esos bancos, las de más saldo (sin hipoteca)")
+    p.evaluate(f"""() => {{ const F={F}; const acc=[['bb','BBVA','bbva','corriente'],['in','ING - Cuenta Nómina','ing','corriente'],['nar','ING - Cuenta Naranja','ing','ahorro'],['dep','Depósito ING','ing','ahorro'],['tr','Trade Republic','tr','ahorro'],['tj','Tarjeta','bbva','tarjeta_credito']]
+      .map(([id,name,bank,kind],i)=>F.normAccount({{id,name,bank,kind,openingCents:100000*(i+1),openingDate:'2026-01-01',order:10+i}}));
+      return F.commit('', cs => {{ for (const a of acc) cs.put('accounts', a); }}, {{noUndo:true}}); }}""")
+    ok(p.evaluate(f"() => {F}.balDefaultAccs()") == ["bb", "in", "tr"], "por defecto: BBVA, ING Cuenta Nómina y Trade Republic")
+    p.click(".nav-btn[data-view=balance]")
+    p.wait_for_selector(".acc-evo-grid")
+    ok(p.locator(".acc-evo").count() == 3 and p.locator(".acc-evo .viz svg").count() == 3, "tres gráficas")
+    ok([x.strip() for x in p.locator(".acc-evo .ae-h b").all_inner_texts()] == ["BBVA", "ING - Cuenta Nómina", "Trade Republic"], "con las tres cuentas pedidas")
+    ok(p.locator(".acc-evo .tick").count() >= 12, "eje con los meses")
+    p.click(".bal-pick [data-bal-acc=nar]")
+    ok(p.locator(".acc-evo").count() == 4 and "ING - Cuenta Naranja" in p.inner_text(".acc-evo-grid"), "el selector añade una cuenta")
+    p.click(".bal-pick [data-bal-acc=bb]")
+    ok(p.locator(".acc-evo").count() == 3 and "BBVA" not in p.inner_text(".acc-evo-grid"), "y la quita")
+    p.reload(); p.wait_for_function("window.__fin && window.__fin.ready()")
+    p.click(".nav-btn[data-view=balance]")
+    p.wait_for_selector(".acc-evo-grid")
+    ok(p.locator(".acc-evo").count() == 3 and "ING - Cuenta Naranja" in p.inner_text(".acc-evo-grid"), "la elección se recuerda")
+    p.click(".bal-pick [data-bal-acc=__def]")
+    ok([x.strip() for x in p.locator(".acc-evo .ae-h b").all_inner_texts()] == ["BBVA", "ING - Cuenta Nómina", "Trade Republic"], "«Las de siempre» vuelve a las tres")
+    p.locator(".acc-evo .viz svg rect.hit").last.hover()
+    ok(not p.is_hidden("#vizTip") and "Saldo" in p.inner_text("#vizTip"), "información al pasar el ratón")
+    p.screenshot(path=os.path.join(CAPT, "pc-balance-cuentas.png"), full_page=True)
+    sin_desborde(p, "PC balance (cuentas)")
+    p.set_viewport_size({"width": 390, "height": 844})
+    p.wait_for_timeout(300)
+    sin_desborde(p, "Estrecha balance (cuentas)")
+    p.screenshot(path=os.path.join(CAPT, "estrecha-balance-cuentas.png"), full_page=True)
+    ok(not errores, "sin errores en la consola (beneficiarios y cuentas): " + "; ".join(errores[:3]))
+    ctx.close()
+
 
 with sync_playwright() as pw:
     b = pw.chromium.launch()
@@ -971,6 +1062,7 @@ with sync_playwright() as pw:
     flujo_orden_banco(b)
     flujo_ciclo_tarjeta(b)
     flujo_transferencias(b)
+    flujo_beneficiarios_y_cuentas(b)
     est = flujo_pc(b)
     est2 = flujo_estadisticas(b)
     flujo_estrecho(b, est)

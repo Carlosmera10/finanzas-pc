@@ -215,6 +215,10 @@ input.tag-in{flex:1 1 70px;min-width:60px;border:0;outline:0;background:transpar
 .tag-sug{position:fixed;z-index:2000;background:var(--panel);border:1px solid var(--line-strong);border-radius:9px;box-shadow:var(--shadow);padding:4px;max-height:260px;overflow:auto}
 .tag-opt{display:flex;align-items:center;gap:6px;padding:6px 9px;border-radius:6px;cursor:pointer;font-size:13.5px;white-space:nowrap}
 .tag-opt.on,.tag-opt:hover{background:var(--accent-soft);color:var(--accent-ink)}
+.payee-sug .tag-opt{justify-content:space-between;gap:12px}
+.payee-sug .po-n{overflow:hidden;text-overflow:ellipsis}
+.payee-sug .po-c{font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;flex-shrink:1;min-width:0}
+.payee-sug .sug-h{font-size:11.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;padding:4px 9px 2px}
 .rv-tbl .tags{min-height:28px;padding:1px 4px;min-width:150px;flex-wrap:nowrap;overflow:hidden}
 .rv-tbl .tags:focus-within{flex-wrap:wrap}
 .rv-tbl input.tag-in{font-size:12.5px;padding:2px;flex:1 1 30px;min-width:30px}
@@ -288,6 +292,16 @@ dialog::backdrop{background:rgba(15,20,35,.45)}
 .vgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:14px;align-items:start}
 .vcard{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;min-width:0}
 .vcard.wide{grid-column:1/-1}
+.bal-pick{display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 4px}
+.bal-pick button{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line-strong);background:var(--panel);color:var(--muted);border-radius:999px;padding:4px 11px;font:600 12.5px/1.3 var(--font);cursor:pointer;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bal-pick button[aria-pressed=true]{background:var(--accent-soft);border-color:var(--accent-line);color:var(--accent-ink)}
+.bal-pick button i{width:9px;height:9px;border-radius:50%;flex-shrink:0}
+.bal-pick button.reset{border-style:dashed}
+.acc-evo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px 20px;margin-top:12px}
+.acc-evo{min-width:0;border-top:1px solid var(--line);padding-top:10px}
+.ae-h{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.ae-h b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ae-v{font-weight:700;font-size:16px;font-variant-numeric:tabular-nums}
 @media (min-width:1100px){.vcard.span2{grid-column:span 2}}
 .vcard-head{display:flex;align-items:flex-start;gap:8px;margin-bottom:10px;flex-wrap:wrap}
 .vcard-head .vt{flex:1;min-width:0}
@@ -440,6 +454,7 @@ dl.kv.avail{margin-top:10px}
   .cat-list li .acts{opacity:1}
   .rv-acc{width:100%}
   .vgrid{grid-template-columns:minmax(0,1fr)}
+  .acc-evo-grid{grid-template-columns:minmax(0,1fr)}
   .comp{grid-template-columns:minmax(0,1fr)}
   .vcard{padding:12px}
   .hero{font-size:26px}
@@ -1009,6 +1024,81 @@ document.addEventListener('mousedown',e=>{
   const x=e.target.closest('[data-tag-del]'); if(x){ e.preventDefault(); const box=x.closest('.tags'), id=box.dataset.tags, cur=[...TAGS.get(id)]; cur.splice(+x.dataset.tagDel,1); TAGS.set(id,cur); repaintTags(id,true); return; }
   const b=e.target.closest('.tags'); if(b&&e.target===b){ e.preventDefault(); b.querySelector('.tag-in').focus(); }
 },true);
+
+/* ----- Sugerencias de beneficiario (revisión de la importación) -----
+   Lista propia en vez de <datalist>: no distingue tildes ni mayúsculas, ordena por uso (con más peso a lo reciente)
+   y, con el campo vacío, propone los beneficiarios que ya se usaron con ese concepto o cuyo nombre aparece en él. */
+const payeeIndex=()=>cached('payeeIdx',()=>{
+  const today=todayYMD(), idx=new Map();
+  for(const m of S.movements.values()){
+    const p=(m.payee||'').trim(); if(!p) continue;
+    const k=normText(p); if(!k) continue;
+    const w=Math.pow(0.5,Math.max(0,daysBetween(m.date,today))/180);
+    let o=idx.get(k); if(!o){ o={k,names:new Map(),w:0,n:0,cats:new Map()}; idx.set(k,o); }
+    o.w+=w; o.n++; o.names.set(p,(o.names.get(p)||0)+w);
+    if(m.categoryId&&(m.kind==='gasto'||m.kind==='ingreso')){ const ck=m.kind+'|'+m.categoryId; o.cats.set(ck,(o.cats.get(ck)||0)+w); }
+  }
+  for(const o of idx.values()){
+    o.name=[...o.names].sort((a,b)=>b[1]-a[1])[0][0];
+    o.cat={}; for(const kind of ['gasto','ingreso']){ const b=[...o.cats].filter(([ck])=>ck.startsWith(kind+'|')).sort((a,b)=>b[1]-a[1])[0]; if(b) o.cat[kind]=b[0].slice(kind.length+1); }
+    o.words=o.k.split(' ').filter(Boolean);
+  }
+  return [...idx.values()].sort((a,b)=>b.w-a.w);
+});
+function payeeCandidates(q,row){
+  const all=payeeIndex(); q=normText(q);
+  if(q){
+    const tier=o=>o.k.startsWith(q)?0:o.words.some(w=>w.startsWith(q))?1:o.k.includes(q)?2:-1;
+    return all.map(o=>[o,tier(o)]).filter(x=>x[1]>=0).sort((a,b)=>a[1]-b[1]||b[0].w-a[0].w).slice(0,8).map(x=>x[0]);
+  }
+  if(!row) return all.slice(0,8);
+  /* Campo vacío: lo usado con ese mismo concepto y los beneficiarios cuyo nombre aparece en el concepto */
+  const concept=normText(row.rawConcept), out=new Map();
+  for(const m of conceptIndex().get(concept)||[]){ const o=all.find(x=>x.k===normText(m.payee)); if(o) out.set(o.k,o); }
+  if(concept) for(const o of all){ if(out.size>=8) break; if(o.k.length>=4&&(' '+concept+' ').includes(' '+o.k+' ')) out.set(o.k,o); }
+  return [...out.values()].slice(0,8);
+}
+const payeeSug=document.createElement('div'); payeeSug.id='payeeSug'; payeeSug.className='tag-sug payee-sug'; payeeSug.hidden=true; payeeSug.setAttribute('role','listbox'); document.body.append(payeeSug);
+let payeeSugFor=null;
+function payeeRowOf(inp){ const rv=imp.files[imp.sel]?.review; return rv?rv.rows.find(y=>y.i===+inp.dataset.i)||null:null; }
+function payeeSuggest(inp){
+  const x=payeeRowOf(inp), kind=x&&x.cls?x.cls.kind:'gasto', q=inp.value.trim();
+  let items=payeeCandidates(q,x&&x.r);
+  if(q&&items.length===1&&items[0].name===q) items=[];
+  if(!items.length){ payeeSug.hidden=true; payeeSugFor=null; return; }
+  payeeSug.innerHTML=(q?'':'<div class="sug-h">Sugerencias para este concepto</div>')+items.map((o,i)=>{ const c=o.cat[kind];
+    return `<div class="tag-opt${i===0&&q?' on':''}" role="option" data-payee-opt="${esc(o.name)}"><span class="po-n">${esc(o.name)}</span>${c&&S.categories.has(c)?`<span class="po-c">${esc(catLabel(c))}</span>`:''}</div>`; }).join('');
+  const r=inp.getBoundingClientRect(), vh=window.visualViewport?visualViewport.height:innerHeight, w=Math.min(innerWidth-16,Math.max(260,r.width));
+  payeeSug.style.minWidth=''; payeeSug.style.width=w+'px'; payeeSug.style.left=Math.max(8,Math.min(r.left,innerWidth-w-8))+'px';
+  payeeSug.hidden=false; payeeSugFor=inp;
+  const h=Math.min(payeeSug.scrollHeight,260);
+  payeeSug.style.top=(r.bottom+4+h>vh-8&&r.top-4-h>8?r.top-4-h:r.bottom+4)+'px';
+}
+function payeePick(inp,name){
+  inp.value=name; payeeSug.hidden=true; payeeSugFor=null;
+  const i=+inp.dataset.i; rvEdit(i,'payee',name);
+  /* Si la fila no tiene categoría, se pone la habitual de ese beneficiario */
+  const x=payeeRowOf(inp), o=payeeIndex().find(p=>p.k===normText(name));
+  if(x&&x.cls&&!x.cls.categoryId&&(x.cls.kind==='gasto'||x.cls.kind==='ingreso')&&o&&o.cat[x.cls.kind]&&S.categories.has(o.cat[x.cls.kind])){
+    const wrap=inp.closest('.tbl-wrap'), st=wrap?[wrap.scrollTop,wrap.scrollLeft]:null;
+    rvEdit(i,'categoryId',o.cat[x.cls.kind]); renderImport();
+    const w2=document.querySelector('#view .rv-tbl')?.closest('.tbl-wrap'); if(w2&&st){ w2.scrollTop=st[0]; w2.scrollLeft=st[1]; }
+    const n=document.querySelector(`input[data-payee-sug][data-i="${i}"]`); if(n){ n.focus(); n.setSelectionRange(n.value.length,n.value.length); payeeSug.hidden=true; }
+  }
+}
+document.addEventListener('focusin',e=>{ const t=e.target; if(t.matches&&t.matches('input[data-payee-sug]')) payeeSuggest(t); });
+document.addEventListener('focusout',e=>{ if(e.target.matches&&e.target.matches('input[data-payee-sug]')) setTimeout(()=>{ if(document.activeElement!==payeeSugFor){ payeeSug.hidden=true; payeeSugFor=null; } },150); });
+document.addEventListener('input',e=>{ const t=e.target; if(t.matches&&t.matches('input[data-payee-sug]')) payeeSuggest(t); },true);
+document.addEventListener('keydown',e=>{
+  const inp=e.target; if(!(inp.matches&&inp.matches('input[data-payee-sug]'))||payeeSug.hidden) return;
+  const opts=[...payeeSug.querySelectorAll('.tag-opt')], on=opts.findIndex(o=>o.classList.contains('on'));
+  if(e.key==='ArrowDown'||e.key==='ArrowUp'){ e.preventDefault(); const n=on<0?(e.key==='ArrowDown'?0:opts.length-1):(on+(e.key==='ArrowDown'?1:-1)+opts.length)%opts.length; opts.forEach((o,i)=>o.classList.toggle('on',i===n)); opts[n].scrollIntoView({block:'nearest'}); return; }
+  if(e.key==='Enter'&&on>=0){ e.preventDefault(); payeePick(inp,opts[on].dataset.payeeOpt); return; }
+  if(e.key==='Escape'){ e.preventDefault(); e.stopPropagation(); payeeSug.hidden=true; return; }
+  if(e.key==='Tab') payeeSug.hidden=true;
+},true);
+payeeSug.addEventListener('mousedown',e=>{ const o=e.target.closest('[data-payee-opt]'); e.preventDefault(); if(o&&payeeSugFor) payeePick(payeeSugFor,o.dataset.payeeOpt); });
+document.addEventListener('scroll',e=>{ if(payeeSug.hidden||payeeSug.contains(e.target)) return; if(payeeSugFor&&payeeSugFor.isConnected) payeeSuggest(payeeSugFor); else payeeSug.hidden=true; },true);
 
 /* ================= Lectura de archivos (sin librerías) ================= */
 async function sha256Hex(buf){ const h=await crypto.subtle.digest('SHA-256',buf); return [...new Uint8Array(h)].map(b=>b.toString(16).padStart(2,'0')).join(''); }
@@ -1944,8 +2034,10 @@ function barPath(x,w,yb,ye,r=4){
   return ye<yb?`M${x},${yb}V${ye+r}Q${x},${ye} ${x+r},${ye}H${x+w-r}Q${x+w},${ye} ${x+w},${ye+r}V${yb}Z`
               :`M${x},${yb}V${ye-r}Q${x},${ye} ${x+r},${ye}H${x+w-r}Q${x+w},${ye} ${x+w},${ye-r}V${yb}Z`;
 }
-function axisY(t,y,padL,w,fmtTick){ return t.ticks.map(v=>`<line class="grid${v===0?' base':''}" x1="${padL}" x2="${w-8}" y1="${y(v)}" y2="${y(v)}"/><text class="tick" x="${padL-8}" y="${y(v)+4}" text-anchor="end">${esc(fmtTick(v))}</text>`).join(''); }
+function axisY(t,y,padL,w,fmtTick){ let labs=t.ticks.map(fmtTick); if(new Set(labs).size<labs.length) labs=t.ticks.map(v=>NF_INT.format(v)); return t.ticks.map((v,i)=>`<line class="grid${v===0?' base':''}" x1="${padL}" x2="${w-8}" y1="${y(v)}" y2="${y(v)}"/><text class="tick" x="${padL-8}" y="${y(v)+4}" text-anchor="end">${esc(labs[i])}</text>`).join(''); }
 function axisX(labels,cx,yb,iw,minW=46){ const k=Math.max(1,Math.ceil(labels.length*minW/iw)); return labels.map((l,i)=>i%k?'':`<text class="tick" x="${cx(i)}" y="${yb+18}" text-anchor="middle">${esc(l)}</text>`).join(''); }
+/* Eje X con marcas en posiciones concretas (p. ej. el día 1 de cada mes en una serie diaria) */
+function axisXAt(ticks,cx,yb,iw,minW=44){ const k=Math.max(1,Math.ceil(ticks.length*minW/iw)); return ticks.map((t,j)=>j%k?'':`<text class="tick" x="${cx(t.i)}" y="${yb+18}" text-anchor="middle">${esc(t.label)}</text>`).join(''); }
 const fmtTickEur=v=>Math.abs(v)>=1000?NF_COMPACT.format(v):NF_INT.format(v);
 /* Columnas agrupadas o apiladas. series: [{name, color, values (euros)}] */
 function colChart({labels,series,stacked=false,tipTitles=null,fmt=v=>money(Math.round(v*100)),line=null}){
@@ -1978,11 +2070,12 @@ function colChart({labels,series,stacked=false,tipTitles=null,fmt=v=>money(Math.
   };
 }
 /* Líneas con cruz al pasar el ratón. series: [{name,color,values}] */
-function lineChart({labels,series,area=false,tipTitles=null,fmt=v=>money(Math.round(v*100)),tickFmt=fmtTickEur,tipValues=null}){
+function lineChart({labels,series,area=false,tipTitles=null,fmt=v=>money(Math.round(v*100)),tickFmt=fmtTickEur,tipValues=null,xTicks=null}){
   return (w,h)=>{
     const padL=54,padR=14,padT=12,padB=26, iw=w-padL-padR, ih=h-padT-padB;
     let max=-Infinity,min=Infinity; for(const s of series) for(const v of s.values){ if(v==null) continue; max=Math.max(max,v); min=Math.min(min,v); }
     if(!isFinite(max)){ max=1; min=0; } if(area){ min=Math.min(0,min); max=Math.max(0,max); }
+    if(max-min<1e-9){ const pad=Math.max(1,Math.abs(max)*0.05); max+=pad; min-=pad; }
     const t=niceTicks(min,max), y=v=>padT+(t.t1-v)/(t.t1-t.t0)*ih, y0=y(Math.min(t.t1,Math.max(t.t0,0))), step=labels.length>1?iw/(labels.length-1):iw, cx=i=>padL+(labels.length>1?step*i:iw/2);
     let body='';
     for(const s of series){
@@ -1994,7 +2087,7 @@ function lineChart({labels,series,area=false,tipTitles=null,fmt=v=>money(Math.ro
     }
     const hits=labels.map((l,i)=>{ const x0=i===0?padL:cx(i)-step/2, x1=i===labels.length-1?w-padR:cx(i)+step/2;
       return `<g class="xh"><line class="cross" x1="${cx(i)}" x2="${cx(i)}" y1="${padT}" y2="${padT+ih}"/><rect class="hit" x="${x0}" y="${padT}" width="${Math.max(2,x1-x0)}" height="${ih}"${tipAttr([(tipTitles||labels)[i],...series.map((s,j)=>{ const val=tipValues&&tipValues[j]?tipValues[j][i]:s.values[i]; return s.name+'\t'+(val==null?'—':fmt(val)); })])}/></g>`; }).join('');
-    return `<svg width="${w}" height="${h}" class="chart">${axisY(t,y,padL,w,tickFmt)}${body}${axisX(labels,cx,padT+ih,iw,56)}${hits}</svg>`;
+    return `<svg width="${w}" height="${h}" class="chart">${axisY(t,y,padL,w,tickFmt)}${body}${xTicks?axisXAt(xTicks,cx,padT+ih,iw,44):axisX(labels,cx,padT+ih,iw,56)}${hits}</svg>`;
   };
 }
 /* Anillo: parte de un todo, como mucho 6 porciones + «Otras» */
@@ -2379,6 +2472,52 @@ function balanceHist(a,d){
   if(!a.openingDate||d>=a.openingDate) return balanceAt(a.id,d);
   let v=a.openingCents; for(const m of S.movements.values()) if(m.accountId===a.id&&m.date>d&&m.date<a.openingDate) v-=m.amountCents; return v;
 }
+function accDailySeries(a,days){
+  if(isMonthlyCard(a)) return days.map(d=>balanceAt(a.id,d));
+  const od=a.openingDate||'', ms=[...S.movements.values()].filter(m=>m.accountId===a.id).sort((x,y)=>x.date<y.date?-1:x.date>y.date?1:0);
+  /* Antes de la apertura: apertura − lo que hubo entre el día y la apertura (también el histórico) */
+  const pre=od?ms.filter(m=>m.date<od):[], preTot=pre.reduce((t,m)=>t+m.amountCents,0);
+  const post=ms.filter(m=>!m.historic&&(!od||m.date>=od));
+  let ip=0, pp=0, jp=0, sp=0; const out=[];
+  for(const d of days){
+    if(od&&d<od){ while(ip<pre.length&&pre[ip].date<=d){ pp+=pre[ip].amountCents; ip++; } out.push(a.openingCents-preTot+pp); }
+    else { while(jp<post.length&&post[jp].date<=d){ sp+=post[jp].amountCents; jp++; } out.push(a.openingCents+sp); }
+  }
+  return out;
+}
+/* Cuentas de las gráficas de un año: por defecto BBVA, ING Cuenta Nómina y Trade Republic */
+function balDefaultAccs(){
+  const live=accSorted().filter(a=>!a.kind.startsWith('tarjeta')&&a.kind!=='prestamo');
+  const ing=live.find(a=>a.bank==='ing'&&/NOMINA/.test(normText(a.name)))||live.find(a=>a.bank==='ing'&&a.kind==='corriente');
+  const pick=[live.find(a=>a.bank==='bbva'),ing,live.find(a=>a.bank==='tr')].filter(Boolean).map(a=>a.id);
+  if(pick.length) return pick;
+  const today=todayYMD();
+  return live.map(a=>[a.id,Math.abs(balanceAt(a.id,today))]).sort((x,y)=>y[1]-x[1]).slice(0,3).map(x=>x[0]);
+}
+function balAccIds(){ return Array.isArray(ui.bal.accs)?ui.bal.accs.filter(id=>S.accounts.has(id)):balDefaultAccs(); }
+function accYearHtml(){
+  const today=todayYMD(), start=addDays(today,-365), days=[]; for(let d=start;d<=today;d=addDays(d,1)) days.push(d);
+  const sel=new Set(balAccIds()), accs=accSorted(true).filter(a=>sel.has(a.id));
+  const offer=accSorted(true).filter(a=>!a.archived||sel.has(a.id));
+  const ticks=days.map((d,i)=>d.endsWith('-01')?{i,label:monthShort(d.slice(0,7))}:null).filter(Boolean);
+  const color=k=>`var(--s${k%8+1})`;
+  const pick=`<div class="bal-pick" role="group" aria-label="Cuentas de las gráficas">${offer.map(a=>{ const k=accs.findIndex(x=>x.id===a.id);
+    return `<button type="button" data-bal-acc="${a.id}" aria-pressed="${k>=0}">${k>=0?`<i style="background:${color(k)}"></i>`:''}${esc(a.name)}</button>`; }).join('')}
+    ${Array.isArray(ui.bal.accs)?`<button type="button" class="reset" data-bal-acc="__def">Las de siempre</button>`:''}</div>`;
+  if(!accs.length) return {body:pick+`<div class="empty" style="margin-top:12px">Elige una o más cuentas para ver cómo ha cambiado su saldo en el último año.</div>`,table:''};
+  const months=ymRange(ymOf(start),ymOf(today)), ends=months.map(m=>m===ymOf(today)?today:ymEnd(m));
+  const items=accs.map((a,k)=>{
+    const vals=accDailySeries(a,days), e=vals[vals.length-1], s0=vals[0], mn=Math.min(...vals), mx=Math.max(...vals);
+    const iMin=vals.indexOf(mn), iMax=vals.indexOf(mx);
+    const est=a.openingDate&&a.openingDate>start&&[...S.movements.values()].some(m=>m.accountId===a.id&&m.historic);
+    const draw=lineChart({labels:days.map(fmtDate),tipTitles:days.map(fmtDate),series:[{name:'Saldo',color:color(k),values:vals.map(v=>v/100)}],xTicks:ticks});
+    return `<div class="acc-evo"><div class="ae-h"><b>${esc(a.name)}</b><span class="ae-v">${balHtml(e)}</span></div>
+      <div class="vsub">${amtHtml(e-s0)} en un año · mínimo ${money(mn)} (${fmtDate(days[iMin])}) · máximo ${money(mx)} (${fmtDate(days[iMax])})</div>
+      ${vizSlot({draw,aria:'Saldo diario de '+a.name+' en el último año'},200)}
+      ${est?`<div class="vsub">${icon('archive','ic xs')} Antes del ${fmtDate(a.openingDate)}, calculado hacia atrás con el histórico de Bluecoins (aproximado).</div>`:''}</div>`; }).join('');
+  const table=`<table class="tbl"><thead><tr><th>Fin de mes</th>${accs.map(a=>`<th class="num">${esc(a.name)}</th>`).join('')}</tr></thead><tbody>${months.map((m,i)=>`<tr><td>${monthLong(m)}${m===ymOf(today)?' (hoy)':''}</td>${accs.map(a=>`<td class="num">${money(balanceHist(a,ends[i]))}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+  return {body:pick+`<div class="acc-evo-grid">${items}</div>`,table};
+}
 function renderBalance(){
   const b=ui.bal, v=$('view'); VIZ.clear();
   setActions(scopeChip('balance',null,'balance'));
@@ -2404,7 +2543,7 @@ function renderBalance(){
   const tTable=`<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Cuenta</th><th>Tipo</th><th class="num">${monthShort(months[0])}</th><th class="num">Hoy</th><th class="num">Variación</th><th>Evolución</th></tr></thead><tbody>
     ${tRows.map(r=>`<tr class="click" data-acc-movs="${r.a.id}"><td>${esc(r.a.name)}</td><td>${esc(ACC_KINDS[r.a.kind])}</td><td class="num">${money(r.s)}</td><td class="num">${balHtml(r.e)}</td><td class="num">${amtHtml(r.e-r.s)}</td><td>${sparkSvg(r.vals)}</td></tr>`).join('')}
     </tbody><tfoot><tr><td colspan="2">Total</td><td class="num">${money(tRows.reduce((s,r)=>s+r.s,0))}</td><td class="num">${money(tRows.reduce((s,r)=>s+r.e,0))}</td><td class="num">${amtHtml(tRows.reduce((s,r)=>s+r.e-r.s,0))}</td><td></td></tr></tfoot></table></div>`;
-  const last=total[total.length-1], firstV=total[0];
+  const last=total[total.length-1], firstV=total[0], accYear=accYearHtml();
   v.innerHTML=`<div class="filters st-filters">
       <label class="fld">Periodo<select class="inp" data-bal="period">${[['12m','12 meses'],['24m','24 meses'],['36m','36 meses'],['todo','Todo']].map(([k,t])=>`<option value="${k}"${k===b.period?' selected':''}>${t}</option>`).join('')}</select></label>
       <div class="fld">Ver<div class="seg" role="group">${[['total','Total'],['cuentas','Por cuenta']].map(([k,t])=>`<button type="button" data-bal-mode="${k}" aria-pressed="${k===b.mode}">${t}</button>`).join('')}</div></div></div>
@@ -2412,6 +2551,7 @@ function renderBalance(){
     ${vizCard({title:'Evolución del patrimonio',sub:`${money(Math.round(last*100))} hoy · ${amtHtml(Math.round((last-firstV)*100))} desde ${monthLong(months[0]).toLowerCase()}`,page:'balance',el:'balance.evol',mode:'balance',wide:true,
       body:(lines.length>1?legendHtml(lines):'')+vizSlot({draw:evo,aria:'Evolución del patrimonio'},280)+(estimated.length?`<div class="vsub">${icon('archive','ic xs')} Antes de la fecha de apertura de ${esc(estimated.map(a=>a.name).join(', '))}, el saldo se calcula hacia atrás con el histórico de Bluecoins (aproximado).</div>`:''),
       table:`<table class="tbl"><thead><tr><th>Mes</th>${lines.map(l=>`<th class="num">${esc(l.name)}</th>`).join('')}</tr></thead><tbody>${months.map((m,i)=>`<tr><td>${monthLong(m)}</td>${lines.map(l=>`<td class="num">${money(Math.round(l.values[i]*100))}</td>`).join('')}</tr>`).join('')}</tbody></table>`})}
+    ${vizCard({title:'Evolución de cada cuenta',sub:'Último año, saldo al final de cada día',page:null,wide:true,body:accYear.body,table:accYear.table})}
     ${vizCard({title:'Activos y deudas hoy',page:'balance',el:'balance.comp',mode:'balance',wide:true,body:compHtml})}
     ${vizCard({title:'Variación por cuenta',page:'balance',el:'balance.table',mode:'balance',wide:true,body:tTable})}
   </div>`;
@@ -3566,7 +3706,7 @@ function reviewHtml(fi){
       :`<button type="button" class="chip info" data-act="rv-keep" data-i="${x.i}" title="Sustituye al apuntado a mano el ${fmtDate(x.manual.date)} («${esc(x.manual.payee||movConcept(x.manual))}»). Pulsa para mantener los dos.">Sustituye</button>`):'<span class="chip ok">Nuevo</span>';
     return `<tr><td>${tag}</td>${head}
       <td class="c-kind"><select class="inp" data-rv="kind" data-i="${x.i}">${kindOpts(c.kind)}</select></td><td class="c-cat">${third}</td>
-      <td class="c-payee"><input class="inp" type="text" data-rv="payee" data-i="${x.i}" value="${esc(c.payee)}" list="payeeList" autocomplete="off"></td>
+      <td class="c-payee"><input class="inp" type="text" data-rv="payee" data-payee-sug data-i="${x.i}" value="${esc(c.payee)}" autocomplete="off" placeholder="Beneficiario"></td>
       <td class="c-tags">${tagEditorHtml('rv-'+x.i,c.labels,'+ etiqueta')}</td></tr>`;
   };
   return `<section class="view-sec"><div class="panel">
@@ -4405,6 +4545,7 @@ function renderHelp(){
   <h2>Duplicados</h2>
   <ul><li><b>Al importar</b>: si el banco trae un movimiento que ya habías apuntado a mano (mismo importe, hasta 5 días de diferencia), la fila sale como <b>Sustituye</b>: al confirmar, se queda el del banco con la categoría, el beneficiario, las etiquetas y las notas que pusiste. Pulsa <b>Sustituye</b> si quieres mantener los dos.</li>
   <li>Al importar, lo que le falte a cada movimiento nuevo (categoría, beneficiario, etiquetas) se completa con lo que pusiste en movimientos anteriores con el <b>mismo concepto</b> del banco (si al menos el 60 % coincide) o con lo habitual del beneficiario. Lo apuntado a mano manda: solo se completa lo que dejaste vacío. En la revisión, debajo del concepto, pone qué se ha completado.</li>
+  <li>En la revisión, el campo <b>Beneficiario</b> propone los que ya usas (sin importar tildes ni mayúsculas; primero los más usados y recientes). Si lo dejas vacío y entras en él, propone los que ya pusiste con ese concepto o cuyo nombre aparece en el concepto. Elige con el ratón o con las flechas e <b>Intro</b>; si la fila no tenía categoría, se pone la habitual de ese beneficiario.</li>
   <li>Si en una descarga nueva ya no aparece un movimiento que se importó antes (por ejemplo, un cargo duplicado que el banco ha anulado), sale en <b>Ya no aparece en este archivo</b>, marcado para <b>Quitar al confirmar</b>.</li>
   <li>Si el banco cambia el orden de los movimientos de un mismo día (y con él el saldo de cada fila), o su fecha o su concepto, la app los reconoce igualmente: salen como <b>Ya estaba · cambiado</b> y, al confirmar, se actualizan con los datos nuevos del banco sin perder su categoría, beneficiario ni etiquetas.</li>
   <li>En <span class="path">Movimientos → Estado → Posibles duplicados</span> están los que coinciden en cuenta, fecha, importe y concepto, y los apuntados a mano con su gemelo del banco. Si de verdad son dos, abre uno y pulsa <b>No es duplicado</b>.</li>
@@ -4425,7 +4566,7 @@ function renderHelp(){
   <li><b>Avisos</b>: presupuestos superados o en riesgo, categorías que el mes pasado gastaron mucho más que su media, meses con más gastos que ingresos, recibos que suben, gastos poco habituales, movimientos sin categoría, saldos descuadrados e importaciones antiguas.</li></ul>
 
   <h2>Balance</h2>
-  <p>Evolución del patrimonio (total o por cuenta), activos y deudas de hoy y la variación de cada cuenta. Antes de la fecha de apertura de una cuenta, el saldo se calcula hacia atrás con el histórico de Bluecoins, así que es aproximado.</p>
+  <p>Evolución del patrimonio (total o por cuenta), activos y deudas de hoy y la variación de cada cuenta. En <b>Evolución de cada cuenta</b> hay una gráfica por cuenta con el saldo de cada día del último año (por defecto BBVA, ING Cuenta Nómina y Trade Republic): pulsa el nombre de una cuenta para añadirla o quitarla, y <b>Las de siempre</b> para volver a las tres. La elección se guarda en cada dispositivo. Antes de la fecha de apertura de una cuenta, el saldo se calcula hacia atrás con el histórico de Bluecoins, así que es aproximado.</p>
 
   <h2>Presupuestos</h2>
   <ol><li><b>Proponer presupuestos</b> calcula una cifra para cada categoría con tu gasto de los últimos 12 meses (media, mediana, percentil 75 o media de 3 o 6 meses), redondeada hacia arriba. Muestra el ahorro previsto con tu ingreso medio. Marca las que quieras y pulsa <b>Crear los marcados</b>.</li>
@@ -4622,6 +4763,9 @@ document.addEventListener('click',async e=>{
   const sc=t.closest('tr[data-st-cat]'); if(sc){ ui.st.cat=ui.st.cat===sc.dataset.stCat?'':sc.dataset.stCat; saveUI(); renderStats(); return; }
   const sq=t.closest('tr[data-st-q]'); if(sq){ const [f,to]=periodRange(ui.st.period,ui.st.from,ui.st.to); Object.assign(ui.mf,{acc:'',from:f,to,cat:'',label:ui.st.label||'',state:'',q:sq.dataset.stQ,page:0}); saveUI(); go('movimientos'); return; }
   const bmd=t.closest('[data-bal-mode]'); if(bmd){ ui.bal.mode=bmd.dataset.balMode; saveUI(); renderBalance(); return; }
+  const bac=t.closest('[data-bal-acc]'); if(bac){ const id=bac.dataset.balAcc;
+    if(id==='__def') delete ui.bal.accs; else { const cur=new Set(balAccIds()); cur.has(id)?cur.delete(id):cur.add(id); ui.bal.accs=[...cur]; }
+    saveUI(); renderBalance(); return; }
   const fi=t.closest('[data-file]'); if(fi){ imp.sel=+fi.dataset.file; imp.sheet=0; renderImport(); return; }
   const bcb=t.closest('#bcSeg button[data-bc]'); if(bcb){ const on=bcb.dataset.bc==='1'; if(on!==useBc()){ await setMeta('useBluecoins',on); render(); } return; }
   const th=t.closest('#themeSeg button[data-theme]'); if(th){ ui.theme=th.dataset.theme; saveUI(); applyTheme(); renderSettings(); return; }
@@ -4699,7 +4843,7 @@ window.__fin={S,ui,receiptCover,parseAmount,centsToPlain,centsToComma,parseDateC
   bluecoinsCsv,movementsToBluecoinsRows,BC_HEADER,commit,undo,backupData,go,ready:()=>!!db,
   readBiff,readCfbStream,rkValue,IMPORTERS,analyzeFile,chainCheck,findHeader,hdrNorm,guessAccount,classifyRow,buildReview,confirmImport,undoImport,
   syncMerge,localSnapshot,syncNow,encryptPayload,decryptPayload,canonStr,useBc,syncState:()=>({cfg:syncCfg,status:syncRt.status,err:syncRt.err,halt:syncRt.halt,dirty:syncRt.dirty,busy:syncRt.busy}),
-  ruleMatches,matchRule,predictMovement,learnFromConcept,dupCandidates,isDup,cardInfo,availableAt,flows,totals,scopeIds,periodRange,insightsFor,budgets,budgetSpent,statsOf,budFlows,extraSuggestions,setExtra,balanceHist,openScopeDialog,applyRulesToFree,bcPlan,confirmBcImport,catLabel,findCounterpart,missingCounterparts,unmatchedTransfers,createCounterparts,needsCounterpart,suggestRuleText,normRule,imp,splitLabels,normLabels,mergeLabels,allLabels};
+  ruleMatches,matchRule,predictMovement,learnFromConcept,dupCandidates,isDup,cardInfo,availableAt,flows,totals,scopeIds,periodRange,insightsFor,budgets,budgetSpent,statsOf,budFlows,extraSuggestions,setExtra,balanceHist,openScopeDialog,applyRulesToFree,bcPlan,confirmBcImport,catLabel,findCounterpart,missingCounterparts,unmatchedTransfers,createCounterparts,needsCounterpart,suggestRuleText,normRule,imp,splitLabels,normLabels,mergeLabels,allLabels,accDailySeries,balDefaultAccs,balAccIds,payeeCandidates,payeeIndex};
 </script>
 </body>
 </html>
