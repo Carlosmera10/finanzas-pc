@@ -576,6 +576,59 @@ def flujo_orden_banco(browser):
     ctx.close()
 
 
+def flujo_historial_bluecoins(browser):
+    """Una descarga del banco que va más atrás que las anteriores trae movimientos que ya estaban como histórico de Bluecoins."""
+    errores = []
+    ctx, p = nueva_pagina(browser, 1440, 900, errores)
+    print("Descarga que llega a fechas del historial de Bluecoins")
+    p.click(".nav-btn[data-view=importar]")
+    importar(p, "ing-cuenta-corta.xls")
+    p.click("[data-act=rv-new-acc]")
+    p.click("#accForm button[type=submit]")
+    p.wait_for_function("document.querySelector('#rvAcc') && document.querySelector('#rvAcc').value !== ''")
+    p.click("[data-act=rv-confirm]")
+    p.wait_for_selector("text=2 movimientos importados")
+    # Lo que el cruce con el historial dejó como histórico (fechas sin archivos del banco); algunas fechas de Bluecoins van desplazadas
+    p.evaluate("""() => { const F = window.__fin, acc = [...F.S.imports.values()][0].accountId;
+      const hist = [['h1', '2026-09-15', -3005, 'Mutua', 'cs'], ['h2', '2026-09-13', 300, 'Galp', 'ci'], ['h3', '2026-09-12', -5000, 'Galp', 'cc', 1],
+        ['h4', '2026-09-12', -2512, 'Galp', 'cg', 1], ['h5', '2026-09-03', 100000, 'Yo', 'ci'], ['h6', '2026-09-02', -4911, 'Gasolinera', 'cg'],
+        ['h7', '2026-08-17', -3005, 'Mutua', 'cs'], ['h8', '2026-08-20', -500, 'Café', 'cc'], ['h9', '2026-07-01', -3005, 'Mutua', 'cs']];
+      return F.commit('', cs => {
+        cs.put('categories', {id: 'pg', parent: null, name: 'Gastos', kind: 'gasto'}); cs.put('categories', {id: 'pi', parent: null, name: 'Ingresos', kind: 'ingreso'});
+        for (const [id, n, par] of [['cs', 'Seguro coche', 'pg'], ['cc', 'Comida', 'pg'], ['cg', 'Gasolina', 'pg'], ['ci', 'Otros ingresos', 'pi']])
+          cs.put('categories', {id, parent: par, name: n, kind: par === 'pi' ? 'ingreso' : 'gasto'});
+        for (const [id, d, a, payee, cat, split] of hist) cs.put('movements', F.normMovement({id, accountId: acc, date: d, amountCents: a, rawConcept: payee, payee,
+          categoryId: cat, kind: a > 0 ? 'ingreso' : 'gasto', source: 'bluecoins', historic: true, bcRef: 'bc:' + id, exportId: 'bluecoins', reviewed: true,
+          labels: id === 'h3' ? ['Tarjeta 💳'] : [], notes: id === 'h1' ? 'Póliza del coche' : '', detail: split ? 'Parte de un movimiento dividido en Bluecoins' : ''}));
+      }, {noUndo: true}); }""")
+    importar(p, "ing-cuenta-larga.xls")
+    txt = p.inner_text("#view")
+    ok("1 nuevos" in txt and "8 ya estaban" in txt and "(6 del historial de Bluecoins)" in txt, "reconoce los del historial de Bluecoins (1 nuevo, 8 ya estaban, 6 del historial)")
+    ok("1 movimiento del historial de Bluecoins de estas fechas no está en el archivo" in txt, "avisa del que solo está en Bluecoins")
+    ok(p.is_checked("#rvOpening"), "propone adelantar el saldo de apertura")
+    p.click("[data-act=rv-confirm]")
+    p.wait_for_selector("text=1 movimientos importados")
+    ok("el saldo cuadra" in p.inner_text("body") and "6 del historial de Bluecoins pasan a ser del banco" in p.inner_text("body"), "importado: el saldo cuadra y 6 pasan a ser del banco")
+    r = p.evaluate("""() => { const F = window.__fin, ms = [...F.S.movements.values()];
+      const g = id => F.S.movements.get(id), split = g('h3');
+      return {total: ms.length, hist: ms.filter(m => m.historic).map(m => m.id).sort(), h1: [g('h1').payee, g('h1').categoryId, g('h1').notes, g('h1').source, g('h1').date],
+        h6: [g('h6').date, g('h6').bankBalanceCents !== null], split: [split.amountCents, split.categoryId, split.labels, /Dividido en Bluecoins/.test(split.notes), !!g('h4')],
+        nuevo: ms.filter(m => m.amountCents === -1200).length, dobles: ms.filter(m => m.amountCents === -3005 && m.date >= '2026-08-01').length}; }""")
+    ok(r["hist"] == ["h8", "h9"], f"solo siguen como histórico el que no está en el archivo y el anterior al archivo → {r['hist']}")
+    ok(r["h1"] == ["Mutua", "cs", "Póliza del coche", "import", "2026-09-15"], f"conserva beneficiario, categoría y notas → {r['h1']}")
+    ok(r["h6"] == ["2026-08-31", True], f"toma la fecha y el saldo del banco → {r['h6']}")
+    ok(r["split"] == [-7512, "cc", ["Tarjeta 💳"], True, False], f"la compra dividida en Bluecoins queda en un solo movimiento → {r['split']}")
+    ok(r["nuevo"] == 1 and r["dobles"] == 3 and r["total"] == 11, f"sin duplicados: {r['total']} movimientos, {r['dobles']} recibos de la Mutua desde agosto")
+    p.click("tr:has-text('ing-cuenta-larga') [data-act=undo-import] >> nth=0")
+    p.click("#cfmOk")
+    p.wait_for_selector("text=Importación deshecha")
+    d = p.evaluate("""() => { const F = window.__fin, ms = [...F.S.movements.values()], g = id => F.S.movements.get(id);
+      return [ms.length, ms.filter(m => m.historic).length, g('h3').amountCents, g('h4').amountCents, g('h6').date, g('h1').source]; }""")
+    ok(d == [11, 9, -5000, -2512, "2026-09-02", "bluecoins"], f"deshacer los devuelve al historial como estaban → {d}")
+    ok(not errores, "sin errores en la consola (historial de Bluecoins): " + "; ".join(errores[:3]))
+    ctx.close()
+
+
 def flujo_ciclo_tarjeta(browser):
     """El recibo de la tarjeta no cobra el mes natural: lo pendiente se calcula con lo que cobra de verdad cada recibo."""
     errores = []
@@ -1101,6 +1154,7 @@ with sync_playwright() as pw:
     b = pw.chromium.launch()
     flujo_importacion(b)
     flujo_orden_banco(b)
+    flujo_historial_bluecoins(b)
     flujo_ciclo_tarjeta(b)
     flujo_transferencias(b)
     flujo_beneficiarios_y_cuentas(b)

@@ -197,10 +197,42 @@ def ing_xls():
     wb.save(os.path.join(DIR, "ing-cuenta.xls"))
 
 
+def ing_tramos():
+    """Dos descargas de ING: una corta (octubre) y otra que va más atrás (agosto–octubre), para el cruce con el historial de Bluecoins."""
+    import xlwt
+    filas = [  # más reciente primero
+        (dt.date(2026, 10, 15), "Vehículo y transporte", "Seguro de coche y moto", "Recibo MUTUA FICTICIA", -30.05),
+        (dt.date(2026, 10, 2), "Otros ingresos", "Ingresos de otras entidades", "Transferencia recibida de TITULAR FICTICIO", 1000.00),
+        (dt.date(2026, 9, 15), "Vehículo y transporte", "Seguro de coche y moto", "Recibo MUTUA FICTICIA", -30.05),
+        (dt.date(2026, 9, 12), "Ventajas ING", "Otras Ventajas ING", "Incentivo por compra ING", 3.00),
+        (dt.date(2026, 9, 12), "Alimentación", "Supermercados y alimentación", "Compra ING GALP E S GALP EJEMPLO", -75.12),
+        (dt.date(2026, 9, 2), "Otros ingresos", "Ingresos de otras entidades", "Transferencia recibida de TITULAR FICTICIO", 1000.00),
+        (dt.date(2026, 8, 31), "Vehículo y transporte", "Gasolina y combustible", "Pago en GASOLINERA EJEMPLO ES", -49.11),
+        (dt.date(2026, 8, 17), "Vehículo y transporte", "Seguro de coche y moto", "Recibo MUTUA FICTICIA", -30.05),
+        (dt.date(2026, 8, 10), "Otros gastos", "Otros seguros", "Recibo NUEVO FICTICIO", -12.00),
+    ]
+    for nombre, desde in [("ing-cuenta-corta.xls", dt.date(2026, 10, 1)), ("ing-cuenta-larga.xls", dt.date(2026, 8, 1))]:
+        wb = xlwt.Workbook(encoding="utf-8"); ws = wb.add_sheet("Movimientos")
+        fecha = xlwt.easyxf(num_format_str="dd/MM/yyyy")
+        ws.write(0, 0, "Movimientos de la Cuenta"); ws.write(0, 2, "  Número de cuenta:"); ws.write(0, 3, "0000 0000 0000 00008888")
+        ws.write(1, 2, "  Titular:"); ws.write(1, 3, "TITULAR FICTICIO")
+        ws.write(2, 2, "  Fecha exportación:"); ws.write(2, 3, "16/11/2026 10:48h")
+        for j, t in enumerate(["F. VALOR", "CATEGORÍA", "SUBCATEGORÍA", "DESCRIPCIÓN", "COMENTARIO", "IMPORTE (€)", "SALDO (€)"]):
+            ws.write(3, j, t)
+        saldo = 2000.00
+        for i, (f, cat, sub, desc, imp) in enumerate(x for x in filas if x[0] >= desde):
+            r = 4 + i
+            ws.write(r, 0, f, fecha); ws.write(r, 1, cat); ws.write(r, 2, sub); ws.write(r, 3, desc)
+            ws.write(r, 5, imp); ws.write(r, 6, round(saldo, 2))
+            saldo = round(saldo - imp, 2)
+        wb.save(os.path.join(DIR, nombre))
+
+
 bbva_tarjeta()
 # Descarga posterior en la que uno de los dos cafés ya no aparece (cargo anulado)
 bbva_tarjeta("bbva-tarjeta-anulado.xlsx", TARJETA_FILAS[:2] + TARJETA_FILAS[3:])
 ing_xls()
+ing_tramos()
 print("Archivos de bancos generados")
 
 
