@@ -798,6 +798,50 @@ def flujo_estadisticas(browser):
     ok(p.locator("tr.subrow").count() == 1 and p.locator(".vcard:has-text('Últimos 24 meses')").count() == 1, "pulsar una categoría abre sus subcategorías y su evolución")
     p.screenshot(path=os.path.join(CAPT, "pc-estadisticas.png"), full_page=True)
 
+    # Filtros por categoría y beneficiario
+    r = p.evaluate(f"""() => {{ const F={F}, [f,t]=F.periodRange('mesant'), d=F.scopeIds('stats',null), T=o=>F.totals(F.flows(d,o).filter(x=>x.d>=f&&x.d<=t));
+      return [T({{cat:'p:casa'}}).exp, T({{cat:'luz'}}).exp, T({{payee:'super x'}}).exp, T({{payee:'Súper X'}}).exp, T({{cat:'p:ocio',label:'Viaje'}}).exp, T({{cat:'__none'}}).exp, T({{cat:'p:ing'}}).inc]; }}""")
+    ok(r == [78000, 8000, 30000, 30000, 40000, 0, 200000], f"motor: categoría principal, subcategoría, beneficiario sin tildes ni mayúsculas, combinado con etiqueta → {r}")
+    p.click("[data-act=st-cat-close]") if p.locator("[data-act=st-cat-close]").count() else None
+    p.select_option("[data-st=fcat]", "p:casa")
+    p.wait_for_timeout(200)
+    ok(p.locator(".vcard:has-text('Ahorro acumulado')").count() == 0, "con una categoría se ocultan los paneles de ahorro")
+    ok("Casa por subcategoría" in p.inner_text("#view") and p.locator(".comp-table tbody tr[data-st-cat]").count() == 2, "la composición se desglosa por subcategoría (Alquiler y Luz)")
+    txt = p.inner_text(".vcard:has-text('Resumen del periodo')").replace("\xa0", " ")
+    ok("780,00 €" in txt and "Movimientos" in txt and "Parte del total" in txt, f"el resumen del periodo muestra el total de la categoría y su peso")
+    ok("Solo gastos con categoría «Casa»" in p.inner_text(".st-ftxt"), "dice qué filtro se aplica")
+    sin = p.evaluate("() => [...document.querySelectorAll('#view .vcard')].filter(c=>!c.querySelector('.vcard-head .vper')).map(c=>c.querySelector('h2').textContent)")
+    ok(sin == [], f"con filtros, todos los paneles siguen con sus fechas (sin fechas: {sin})")
+    p.click("tr[data-st-cat=luz]")
+    ok(p.locator(".vcard:has-text('Últimos 24 meses') h2:text-is('Luz')").count() == 1, "pulsar una subcategoría abre su evolución")
+    # Beneficiario desde la tabla: se combina con la categoría
+    p.click(".vcard:has-text('Beneficiarios') [data-st-payee='Eléctrica'] >> nth=0")
+    p.wait_for_timeout(200)
+    ok(p.input_value("[data-st=payee]") == "Eléctrica" and p.evaluate("() => window.__fin.ui.st.fcat") == "p:casa", "el embudo de un beneficiario lo añade al filtro")
+    ok("80,00 €" in p.inner_text(".vcard:has-text('Resumen del periodo')").replace("\xa0", " "), "Casa + Eléctrica: 80 € el mes anterior")
+    # Al ir a los movimientos se lleva la categoría
+    p.click(".vcard:has-text('Beneficiarios') tr[data-st-q] >> nth=0")
+    p.wait_for_timeout(200)
+    ok(p.evaluate("() => [window.__fin.ui.view, window.__fin.ui.mf.cat, window.__fin.ui.mf.q]") == ["movimientos", "p:casa", "Eléctrica"], "pulsar un beneficiario lleva a sus movimientos con la misma categoría")
+    p.evaluate("() => Object.assign(window.__fin.ui.mf,{acc:'',from:'',to:'',cat:'',label:'',state:'',q:'',page:0})")
+    p.click(".nav-btn[data-view=estadisticas]")
+    p.click("[data-act=st-clear]")
+    p.wait_for_timeout(200)
+    ok(p.evaluate("() => { const s=window.__fin.ui.st; return [s.fcat,s.payee,s.label]; }") == ["", "", ""] and p.locator(".vcard:has-text('Ahorro acumulado')").count() == 1, "«Quitar filtros» vuelve a la vista completa")
+    # Un beneficiario que solo tiene ingresos cambia a «Ingresos»; las categorías de gasto no se ofrecen allí
+    p.fill("[data-st=payee]", "Empresa"); p.dispatch_event("[data-st=payee]", "change")
+    p.wait_for_timeout(200)
+    ok(p.evaluate("() => window.__fin.ui.st.kind") == "ingreso" and "24.000,00 €" not in p.inner_text(".vcard:has-text('Resumen del periodo')"), "un beneficiario con solo ingresos pasa a analizar ingresos")
+    ok(p.locator("[data-st=fcat] option[value='p:casa']").count() == 0 and p.locator("[data-st=fcat] option[value='p:ing']").count() == 1, "la lista de categorías es la del tipo que se analiza")
+    p.fill("[data-st=payee]", ""); p.dispatch_event("[data-st=payee]", "input")
+    p.wait_for_timeout(200)
+    ok(p.evaluate("() => window.__fin.ui.st.payee") == "", "vaciar el campo quita el beneficiario")
+    p.click("[data-st-kind=gasto]")
+    p.select_option("[data-st=fcat]", "p:ocio")
+    p.click("[data-st-kind=ingreso]")
+    ok(p.evaluate("() => window.__fin.ui.st.fcat") == "", "al cambiar de gastos a ingresos se quita una categoría de gasto")
+    p.click("[data-st-kind=gasto]")
+
     # Cuentas de un elemento: solo «Ahorro B» en el resumen del periodo
     p.click(".vcard:has-text('Resumen del periodo') .scope-chip")
     p.wait_for_selector("#scopeDlg[open]")

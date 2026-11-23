@@ -228,6 +228,13 @@ input.tag-in{flex:1 1 70px;min-width:60px;border:0;outline:0;background:transpar
 .rv-all .tags{flex:1 1 260px;max-width:520px}
 .bulk-tags .tags{min-width:200px;min-height:30px;padding:1px 4px}
 .f-label{width:170px}
+.f-cat{width:200px}
+.f-payee{width:190px}
+.st-filters input.inp{font-weight:600}
+.st-filters input.inp::placeholder{font-weight:400}
+.st-ftxt{display:flex;align-items:center;gap:6px;margin:-2px 0 10px;font-size:12.5px;color:var(--muted)}
+.btn.ic-only{padding:4px 6px}
+td.act-cell{width:1%;padding-top:0;padding-bottom:0;text-align:right}
 .lbl-list{columns:3 220px}
 .lbl-list li{break-inside:avoid}
 /* Categorías */
@@ -516,7 +523,7 @@ details.bc-opts summary{cursor:pointer;color:var(--muted);font-size:13px;font-we
   .nav-btn{padding-top:11px;padding-bottom:11px}
   #menuBtn{display:none}
   .sync-fields{grid-template-columns:minmax(0,1fr)}
-  .inp,select.inp,textarea.inp{font-size:16px}
+  .inp,select.inp,input.inp,textarea.inp{font-size:16px}
   /* Diálogos a pantalla completa por abajo, como una hoja */
   dialog,dialog.narrow{width:100vw;max-width:100vw;margin:auto 0 0;border-radius:16px 16px 0 0;max-height:calc(100dvh - 12px);border-width:1px 0 0}
   .dlg{max-height:calc(100dvh - 14px)}
@@ -613,6 +620,7 @@ details.bc-opts summary{cursor:pointer;color:var(--muted);font-size:13px;font-we
   <symbol id="i-layers" viewBox="0 0 24 24"><path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></symbol>
   <symbol id="i-cloud" viewBox="0 0 24 24"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></symbol>
   <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M21 4h-7"/><path d="M10 4H3"/><path d="M21 12h-9"/><path d="M8 12H3"/><path d="M21 20h-5"/><path d="M12 20H3"/><path d="M14 2v4"/><path d="M8 10v4"/><path d="M16 18v4"/></symbol>
+  <symbol id="i-filter" viewBox="0 0 24 24"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/></symbol>
   <symbol id="i-monitor" viewBox="0 0 24 24"><rect width="20" height="14" x="2" y="3" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></symbol>
 </svg>
 
@@ -2070,12 +2078,18 @@ const NF_EUR0=new Intl.NumberFormat('es-ES',{style:'currency',currency:'EUR',max
 const parentOf=id=>{ const c=S.categories.get(id); return c?(c.parent||c.id):null; };
 /* Lista de ingresos y gastos (sin transferencias) de las cuentas elegidas; «v» es el importe con el signo del tipo:
    un gasto de 10 € vale 1000 y su devolución −1000. */
-function flows(ids,label=''){
-  const key='flows|'+[...ids].sort().join(',')+'|'+label;
+/* «flt»: una etiqueta (texto) o {label, cat, payee}. «cat»: 'p:<principal>' (con sus subcategorías), una subcategoría o '__none';
+   «payee»: el beneficiario (o el concepto si no tiene), sin distinguir tildes ni mayúsculas. */
+const payeeKey=m=>normText(m.payee||movConcept(m));
+function flows(ids,flt=''){
+  const F=typeof flt==='string'?{label:flt}:(flt||{}), label=F.label||'', cat=F.cat||'', payee=normText(F.payee||''), par=cat.startsWith('p:')?cat.slice(2):null;
+  const key='flows|'+[...ids].sort().join(',')+'|'+label+'|'+cat+'|'+payee;
   return cached(key,()=>{ const out=[];
     for(const m of S.movements.values()){
       if(!ids.has(m.accountId)||(m.kind!=='gasto'&&m.kind!=='ingreso')) continue;
       if(label&&!m.labels.includes(label)) continue;
+      if(cat){ if(cat==='__none'){ if(m.categoryId) continue; } else if(par){ if(parentOf(m.categoryId)!==par) continue; } else if(m.categoryId!==cat) continue; }
+      if(payee&&payeeKey(m)!==payee) continue;
       out.push({m,d:m.date,ym:ymOf(m.date),k:m.kind,v:m.kind==='gasto'?-m.amountCents:m.amountCents,cat:m.categoryId,par:parentOf(m.categoryId)});
     }
     return out.sort((a,b)=>a.d<b.d?-1:a.d>b.d?1:0); });
@@ -2091,6 +2105,13 @@ function catColorIndex(kind='gasto'){ return cached('catcolor|'+kind,()=>{ const
   const order=[...t].sort((a,b)=>b[1]-a[1]).map(x=>x[0]).filter(x=>x!=='__none'); return new Map(order.slice(0,8).map((id,i)=>[id,i+1])); }); }
 const catColor=(id,kind='gasto')=>{ const i=catColorIndex(kind).get(id); return i?`var(--s${i})`:'var(--s-other)'; };
 const parentName=id=>id&&id!=='__none'?(S.categories.get(id)?.name||'(borrada)').trim():'Sin categoría';
+/* Subcategorías (cuando las estadísticas se filtran por una categoría): nombre y color fijo dentro de su categoría principal */
+const subName=id=>id&&id!=='__none'?(S.categories.get(id)?.name||'(borrada)').trim():'Sin categoría';
+function subColorIndex(pid,kind){ return cached('subcolor|'+pid+'|'+kind,()=>{ const t=new Map(); for(const m of S.movements.values()){ if(m.kind!==kind||!m.categoryId||parentOf(m.categoryId)!==pid) continue; t.set(m.categoryId,(t.get(m.categoryId)||0)+(kind==='gasto'?-m.amountCents:m.amountCents)); }
+  return new Map([...t].sort((a,b)=>b[1]-a[1]).slice(0,8).map((x,i)=>[x[0],i+1])); }); }
+const subColor=(id,kind='gasto')=>{ const i=id&&id!=='__none'?subColorIndex(parentOf(id),kind).get(id):0; return i?`var(--s${i})`:'var(--s-other)'; };
+/* Texto del filtro de categoría de las estadísticas */
+const stCatName=v=>!v?'':v==='__none'?'Sin categoría':v.startsWith('p:')?parentName(v.slice(2)):catLabel(v);
 
 /* Periodos de las estadísticas */
 const PERIODS=[['mes','Este mes'],['mesant','Mes anterior'],['3m','Últimos 3 meses'],['6m','Últimos 6 meses'],['12m','Últimos 12 meses'],['anio','Este año'],['anioant','Año anterior'],['todo','Todo'],['custom','Personalizado']];
@@ -2480,28 +2501,56 @@ function renderResumen(){
     </tbody><tfoot><tr><td colspan="2">Total</td><td class="num">${money(rows.reduce((s,a)=>s+(bal.get(a.id)||0),0))}</td><td colspan="3"></td></tr></tfoot></table></div>`})}</section>`;
   drawViz(v);
 }
+const stPayeeBtn=p=>`<button type="button" class="btn ghost sm ic-only" data-st-payee="${esc(p)}" title="Analizar solo «${esc(p)}»" aria-label="Analizar solo ${esc(p)}">${icon('filter','ic xs')}</button>`;
 function meterHtml(spent,budget,st){ const pct=budget>0?spent/budget:0;
   return `<div class="meter ${st.cls}"${tipAttr(['Gastado\t'+money(spent),'Presupuesto\t'+money(budget),'Usado\t'+NF_PCT0.format(pct)])}><span style="width:${Math.min(100,pct*100)}%"></span></div><div class="meter-st ${st.cls}">${icon(st.ic,'ic xs')}${st.txt} · ${NF_PCT0.format(pct)}</div>`; }
 
 /* ================= Vista: Estadísticas ================= */
-ui.st=Object.assign({period:'12m',from:'',to:'',kind:'gasto',label:'',cat:''},ui.st||{});
+ui.st=Object.assign({period:'12m',from:'',to:'',kind:'gasto',label:'',cat:'',fcat:'',payee:''},ui.st||{});
+/* Beneficiarios para el campo del filtro: los apuntados y, si no lo tienen, el concepto (como en la tabla de beneficiarios) */
+const stPayeeList=()=>cached('stPayees',()=>{ const t=new Map();
+  for(const m of S.movements.values()){ if(m.kind!=='gasto'&&m.kind!=='ingreso') continue; const n=(m.payee||movConcept(m)).trim(), k=normText(n); if(!k) continue;
+    const o=t.get(k)||{n,c:0,names:new Map()}; o.c++; o.names.set(n,(o.names.get(n)||0)+1); t.set(k,o); }
+  return [...t.values()].map(o=>({name:[...o.names].sort((a,b)=>b[1]-a[1])[0][0],c:o.c})).sort((a,b)=>b.c-a.c||a.name.localeCompare(b.name,'es')).map(o=>o.name); });
+/* Si el beneficiario elegido no tiene movimientos del tipo que se analiza y sí del otro, se cambia a ese tipo */
+function stPayeeKind(name){ const k=normText(name); if(!k) return; const n={gasto:0,ingreso:0};
+  for(const m of S.movements.values()) if((m.kind==='gasto'||m.kind==='ingreso')&&payeeKey(m)===k) n[m.kind]++;
+  const other=ui.st.kind==='gasto'?'ingreso':'gasto'; if(!n[ui.st.kind]&&n[other]) ui.st.kind=other; }
 function renderStats(){
   const st=ui.st, v=$('view');
   setActions(scopeChip('stats',null,'flow'));
   VIZ.clear();
   const today=todayYMD(), [from,toP]=periodRange(st.period,st.from,st.to), to=toP>today?today:toP, [pf,pt]=prevRange(from,to,toP), yf=yearBefore(from), yt=yearBefore(to);
   const kind=st.kind, isExp=kind==='gasto', kindName=isExp?'Gastos':'Ingresos';
+  /* Filtros de categoría y beneficiario: una categoría borrada o de otro tipo se quita */
+  if(st.fcat&&st.fcat!=='__none'){ const c=S.categories.get(st.fcat.replace(/^p:/,'')); if(!c||(c.kind||'gasto')!==kind) st.fcat=''; }
+  const F={label:st.label,cat:st.fcat,payee:st.payee}, focus=!!(st.fcat||st.payee), anyF=!!(st.label||st.fcat||st.payee);
+  /* Con una categoría elegida, el desglose es por subcategoría */
+  const bySub=!!st.fcat&&st.fcat!=='__none', catWord=bySub?'subcategoría':'categoría';
+  const gk=x=>bySub?(x.cat||'__none'):(x.par||'__none'), gName=k=>bySub?subName(k):parentName(k), gColor=k=>bySub?subColor(k,kind):catColor(k,kind);
+  const fTxt=[st.fcat?'categoría «'+stCatName(st.fcat)+'»':'',st.payee?'beneficiario «'+st.payee+'»':'',st.label?'etiqueta «'+st.label+'»':''].filter(Boolean);
   const filters=`<div class="filters st-filters">
     <label class="fld">Periodo<select class="inp" data-st="period">${PERIODS.map(([k,t])=>`<option value="${k}"${k===st.period?' selected':''}>${t}</option>`).join('')}</select></label>
     ${st.period==='custom'?`<label class="fld">Desde<input class="inp f-date" type="date" data-st="from" value="${esc(st.from||from)}"></label><label class="fld">Hasta<input class="inp f-date" type="date" data-st="to" value="${esc(st.to||to)}"></label>`:''}
     <div class="fld">Analizar<div class="seg" role="group">${[['gasto','Gastos'],['ingreso','Ingresos']].map(([k,t])=>`<button type="button" data-st-kind="${k}" aria-pressed="${k===kind}">${t}</button>`).join('')}</div></div>
+    <label class="fld">Categoría<select class="inp f-cat" data-st="fcat"><option value="">Todas</option><option value="__none"${st.fcat==='__none'?' selected':''}>Sin categoría</option>${catOptionsHtml(kind,st.fcat,{allowParents:true})}</select></label>
+    <label class="fld">Beneficiario<input class="inp f-payee" type="search" data-st="payee" list="stPayeeOpts" value="${esc(st.payee)}" placeholder="Todos" autocomplete="off" enterkeyhint="search"><datalist id="stPayeeOpts">${stPayeeList().map(n=>`<option value="${esc(n)}"></option>`).join('')}</datalist></label>
     <label class="fld">Etiqueta<select class="inp f-label" data-st="label"><option value="">Todas</option>${allLabels().map(l=>`<option value="${esc(l)}"${l===st.label?' selected':''}>${esc(l)}</option>`).join('')}</select></label>
-    <span class="muted period-txt">${fmtDate(from)} – ${fmtDate(to)}</span></div>`;
-  const ids=scopeIds('stats','stats.kpi'), all=flows(ids,st.label), cur=inRange(all,from,to), prev=inRange(all,pf,pt), ly=inRange(all,yf,yt);
+    ${anyF?`<button type="button" class="btn ghost sm st-clear" data-act="st-clear">${icon('x','ic xs')}Quitar filtros</button>`:''}
+    <span class="muted period-txt">${fmtDate(from)} – ${fmtDate(to)}</span></div>
+    ${anyF?`<p class="st-ftxt">${icon('filter','ic xs')}Solo ${esc(kindName.toLowerCase())} con ${esc(fTxt.join(', '))}. Los avisos no se filtran.</p>`:''}`;
+  const ids=scopeIds('stats','stats.kpi'), all=flows(ids,F), cur=inRange(all,from,to), prev=inRange(all,pf,pt), ly=inRange(all,yf,yt);
   const T=totals(cur), P=totals(prev), Y=totals(ly), nm=elapsedMonths(from,to), tOut=transfersOut(ids,from,to);
   const tile=(lab,val,d,extra='')=>`<div class="tile"><div class="k">${lab}</div><div class="tv">${val}</div><div class="td">${d}${extra}</div></div>`;
   const per={from,to}, perVs={from,to,vs:[{from:pf,to:pt,label:'periodo anterior'},{from:yf,to:yt,label:'año anterior'}]}, pTxt=esc(rangeTxt(pf,pt)), yTxt=esc(rangeTxt(yf,yt));
-  const kpis=vizCard({title:'Resumen del periodo',per:perVs,page:'stats',el:'stats.kpi',wide:true,body:`<div class="tiles">
+  const kCur=cur.filter(x=>x.k===kind), kTot=isExp?T.exp:T.inc, kY=isExp?Y.exp:Y.inc;
+  const kpis=focus?vizCard({title:'Resumen del periodo',per:perVs,page:'stats',el:'stats.kpi',wide:true,body:`<div class="tiles">
+    ${tile(kindName,money(kTot),deltaHtml(kTot,isExp?P.exp:P.inc,!isExp)+` <span class="faint">vs ${pTxt}</span>`)}
+    ${tile('Año anterior',money(kY),deltaHtml(kTot,kY,!isExp)+` <span class="faint">${yTxt}</span>`)}
+    ${tile('Media al mes',money(Math.round(kTot/nm)),`<span class="faint">${nm} ${nm===1?'mes':'meses'}</span>`)}
+    ${tile('Movimientos',NF_INT.format(kCur.length),`<span class="faint">${kCur.length?'importe medio '+money(Math.round(kTot/kCur.length)):'en el periodo'}</span>`)}
+    ${(()=>{ const B=totals(inRange(flows(ids,st.label),from,to)), b=isExp?B.exp:B.inc; return b>0?tile('Parte del total',NF_PCT.format(kTot/b),`<span class="faint">de ${money(b)} de ${esc(kindName.toLowerCase())}${st.label?' con la etiqueta':''}</span>`):''; })()}
+  </div>`}):vizCard({title:'Resumen del periodo',per:perVs,page:'stats',el:'stats.kpi',wide:true,body:`<div class="tiles">
     ${tile('Ingresos',money(T.inc),deltaHtml(T.inc,P.inc,true)+` <span class="faint">vs ${pTxt}</span>`)}
     ${tile('Gastos',money(T.exp),deltaHtml(T.exp,P.exp,false)+` <span class="faint">vs ${pTxt}</span>`)}
     ${tile('Ahorro',money(T.save),`<span class="faint">${yTxt}: ${money(Y.save)}</span>`)}
@@ -2511,9 +2560,13 @@ function renderStats(){
   </div>`});
   /* Evolución mensual: cada gráfico con sus propias cuentas */
   const months=ymRange(ymOf(from),ymOf(to)), L=months.map(monthShort), TT=months.map(monthLong);
-  const monthAgg=key=>byMonth(inRange(flows(scopeIds('stats',key),st.label),from,to),months);
+  const monthAgg=key=>byMonth(inRange(flows(scopeIds('stats',key),F),from,to),months);
   const bm=monthAgg('stats.evol');
-  const ev=colChart({labels:L,tipTitles:TT,series:[{name:'Ingresos',color:'var(--s1)',values:months.map(m=>bm.get(m).inc/100)},{name:'Gastos',color:'var(--s2)',values:months.map(m=>bm.get(m).exp/100)}]});
+  /* Con filtro de categoría o beneficiario, solo el tipo analizado y su media del periodo */
+  const evSeries=focus?[{name:kindName,color:isExp?'var(--s2)':'var(--s1)',values:months.map(m=>bm.get(m)[isExp?'exp':'inc']/100)}]:[{name:'Ingresos',color:'var(--s1)',values:months.map(m=>bm.get(m).inc/100)},{name:'Gastos',color:'var(--s2)',values:months.map(m=>bm.get(m).exp/100)}];
+  const evAvg=focus?months.map(()=>evSeries[0].values.reduce((a,b)=>a+b,0)/months.length):null;
+  const ev=colChart({labels:L,tipTitles:TT,series:evSeries,...(focus?{line:{name:'Media del periodo',color:'var(--ink-2)',dots:false,values:evAvg}}:{})});
+  const evLegend=focus?legendHtml([evSeries[0],{name:'Media del periodo',color:'var(--ink-2)'}]):legendHtml([{name:'Ingresos',color:'var(--s1)'},{name:'Gastos',color:'var(--s2)'}]);
   const evTable=`<table class="tbl"><thead><tr><th>Mes</th><th class="num">Ingresos</th><th class="num">Gastos</th><th class="num">Ahorro</th><th class="num">Tasa de ahorro</th></tr></thead><tbody>${months.map(m=>{ const r=bm.get(m); return `<tr><td>${monthLong(m)}</td><td class="num">${money(r.inc)}</td><td class="num">${money(r.exp)}</td><td class="num">${amtHtml(r.inc-r.exp)}</td><td class="num">${r.inc>0?NF_PCT.format((r.inc-r.exp)/r.inc):'—'}</td></tr>`; }).join('')}</tbody></table>`;
   const bmS=monthAgg('stats.ahorro'), savV=months.map(m=>{ const r=bmS.get(m); return (r.inc-r.exp)/100; });
   const sav=colChart({labels:L,tipTitles:TT,series:[{name:'Ahorro',color:'var(--s1)',colors:savV.map(x=>x<0?'var(--neg-bar)':'var(--s1)'),values:savV}]});
@@ -2522,54 +2575,55 @@ function renderStats(){
   const bmR=monthAgg('stats.tasa'), rateVals=months.map(m=>{ const r=bmR.get(m); return r.inc>0?Math.round((r.inc-r.exp)/r.inc*1000)/10:null; });
   const rateChart=lineChart({labels:L,tipTitles:TT,series:[{name:'Tasa de ahorro',color:'var(--s1)',values:rateVals.map(x=>x==null?null:Math.max(-100,x))}],fmt:v=>NF_INT.format(v)+' %',tickFmt:v=>NF_INT.format(v)+' %',tipValues:[rateVals]});
   /* Composición */
-  const cIds=scopeIds('stats','stats.comp'), cAll=flows(cIds,st.label), cCur=inRange(cAll,from,to), cPrev=inRange(cAll,pf,pt), cLy=inRange(cAll,yf,yt);
-  const byP=groupSum(cCur,x=>x.par||'__none',kind), byPprev=groupSum(cPrev,x=>x.par||'__none',kind), byPly=groupSum(cLy,x=>x.par||'__none',kind);
+  const cIds=scopeIds('stats','stats.comp'), cAll=flows(cIds,F), cCur=inRange(cAll,from,to), cPrev=inRange(cAll,pf,pt), cLy=inRange(cAll,yf,yt);
+  const byP=groupSum(cCur,gk,kind), byPprev=groupSum(cPrev,gk,kind), byPly=groupSum(cLy,gk,kind);
   const totK=[...byP.values()].reduce((a,b)=>a+Math.max(0,b),0), list=[...byP].sort((a,b)=>b[1]-a[1]);
   const last12=ymRange(ymAdd(ymOf(to),-11),ymOf(to)), cMonths=inRange(cAll,last12[0]+'-01',ymEnd(last12[11]));
-  const donutItems=list.slice(0,6).map(([p,val])=>({name:parentName(p),value:val/100,color:catColor(p,kind)}));
+  const donutItems=list.slice(0,6).map(([p,val])=>({name:gName(p),value:val/100,color:gColor(p)}));
   const rest=list.slice(6).reduce((s,x)=>s+x[1],0); if(rest>0) donutItems.push({name:'Otras',value:rest/100,color:'var(--s-other)'});
   const compRows=list.map(([p,val])=>{
-    const subs=[...groupSum(cCur.filter(x=>(x.par||'__none')===p),x=>x.cat||'__none',kind)].sort((a,b)=>b[1]-a[1]);
+    const subs=bySub?[]:[...groupSum(cCur.filter(x=>(x.par||'__none')===p),x=>x.cat||'__none',kind)].sort((a,b)=>b[1]-a[1]);
     const open=st.cat===p;
-    const spark=sparkSvg(last12.map(m=>cMonths.filter(x=>x.ym===m&&x.k===kind&&(x.par||'__none')===p).reduce((s,x)=>s+x.v,0)));
-    return `<tr class="click${open?' sel':''}" data-st-cat="${esc(p)}"><td><span class="sw" style="background:${catColor(p,kind)}"></span>${esc(parentName(p))}${subs.length>1?` <span class="faint">(${subs.length})</span>`:''}</td><td class="num">${money(val)}</td>
+    const spark=sparkSvg(last12.map(m=>cMonths.filter(x=>x.ym===m&&x.k===kind&&gk(x)===p).reduce((s,x)=>s+x.v,0)));
+    return `<tr class="click${open?' sel':''}" data-st-cat="${esc(p)}"><td><span class="sw" style="background:${gColor(p)}"></span>${esc(gName(p))}${subs.length>1?` <span class="faint">(${subs.length})</span>`:''}</td><td class="num">${money(val)}</td>
       <td class="num">${totK?NF_PCT.format(Math.max(0,val)/totK):'—'}</td><td class="num">${money(Math.round(val/nm))}</td>
       <td class="num">${deltaHtml(val,byPprev.get(p)||0,!isExp)}</td><td class="num">${deltaHtml(val,byPly.get(p)||0,!isExp)}</td><td>${spark}</td></tr>
       ${open?subs.map(([c,sv])=>`<tr class="subrow"><td>${esc(c==='__none'?'(sin subcategoría)':(S.categories.get(c)?.name||'').trim())}</td><td class="num">${money(sv)}</td><td class="num">${val?NF_PCT.format(Math.max(0,sv)/Math.max(1,val)):''}</td><td class="num">${money(Math.round(sv/nm))}</td><td colspan="3"></td></tr>`).join(''):''}`; }).join('');
-  const compTable=`<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Categoría</th><th class="num">Importe</th><th class="num">% del total</th><th class="num">Media al mes</th><th class="num">vs periodo anterior<span class="th-sub">${pTxt}</span></th><th class="num">vs año anterior<span class="th-sub">${yTxt}</span></th><th>Últimos 12 meses<span class="th-sub">${esc(rangeTxt(last12[0]+'-01',ymEnd(last12[11])<today?ymEnd(last12[11]):today))}</span></th></tr></thead><tbody>${compRows||'<tr><td colspan="7" class="faint">Sin datos</td></tr>'}</tbody><tfoot><tr><td>Total</td><td class="num">${money(totK)}</td><td></td><td class="num">${money(Math.round(totK/nm))}</td><td colspan="3"></td></tr></tfoot></table></div>`;
+  const compTable=`<div class="tbl-wrap"><table class="tbl"><thead><tr><th>${bySub?'Subcategoría':'Categoría'}</th><th class="num">Importe</th><th class="num">% del total</th><th class="num">Media al mes</th><th class="num">vs periodo anterior<span class="th-sub">${pTxt}</span></th><th class="num">vs año anterior<span class="th-sub">${yTxt}</span></th><th>Últimos 12 meses<span class="th-sub">${esc(rangeTxt(last12[0]+'-01',ymEnd(last12[11])<today?ymEnd(last12[11]):today))}</span></th></tr></thead><tbody>${compRows||'<tr><td colspan="7" class="faint">Sin datos</td></tr>'}</tbody><tfoot><tr><td>Total</td><td class="num">${money(totK)}</td><td></td><td class="num">${money(Math.round(totK/nm))}</td><td colspan="3"></td></tr></tfoot></table></div>`;
   /* Evolución por categoría (apilada) */
-  const sIds=scopeIds('stats','stats.stack'), sAll=inRange(flows(sIds,st.label),from,to);
-  const topP=[...groupSum(sAll,x=>x.par||'__none',kind)].sort((a,b)=>b[1]-a[1]).slice(0,7).map(x=>x[0]);
-  const stackSeries=[...topP.map(p=>({name:parentName(p),color:catColor(p,kind),key:p})),{name:'Otras',color:'var(--s-other)',key:'__otras'}].map(s=>({...s,values:months.map(m=>sAll.filter(x=>x.ym===m&&x.k===kind&&(s.key==='__otras'?!topP.includes(x.par||'__none'):(x.par||'__none')===s.key)).reduce((a,x)=>a+x.v,0)/100)})).filter(s=>s.values.some(Boolean));
+  const sIds=scopeIds('stats','stats.stack'), sAll=inRange(flows(sIds,F),from,to);
+  const topP=[...groupSum(sAll,gk,kind)].sort((a,b)=>b[1]-a[1]).slice(0,7).map(x=>x[0]);
+  const stackSeries=[...topP.map(p=>({name:gName(p),color:gColor(p),key:p})),{name:'Otras',color:'var(--s-other)',key:'__otras'}].map(s=>({...s,values:months.map(m=>sAll.filter(x=>x.ym===m&&x.k===kind&&(s.key==='__otras'?!topP.includes(gk(x)):gk(x)===s.key)).reduce((a,x)=>a+x.v,0)/100)})).filter(s=>s.values.some(Boolean));
   const stackChart=colChart({labels:months.map(monthShort),tipTitles:months.map(monthLong),series:stackSeries,stacked:true});
   /* Mapa de calor: categorías × meses (intensidad relativa a cada fila) */
-  const hIds=scopeIds('stats','stats.heat'), hAll=inRange(flows(hIds,st.label),from,to), hm=months.slice(-12);
-  const hRows=[...groupSum(hAll,x=>x.par||'__none',kind)].sort((a,b)=>b[1]-a[1]).map(([p])=>{ const vals=hm.map(m=>hAll.filter(x=>x.ym===m&&x.k===kind&&(x.par||'__none')===p).reduce((s,x)=>s+x.v,0)); const mx=Math.max(1,...vals);
-    return `<tr><td class="nowrap">${esc(parentName(p))}</td>${vals.map((x,i)=>{ const a=Math.max(0,x)/mx; return `<td class="num heat" style="--a:${Math.round(a*85)}%"${tipAttr([parentName(p)+' · '+monthLong(hm[i]),'Importe\t'+money(x)])}><span class="${a>0.6?'on':''}">${x?NF_COMPACT.format(x/100):''}</span></td>`; }).join('')}<td class="num"><b>${money0(vals.reduce((a,b)=>a+b,0))}</b></td></tr>`; }).join('');
-  const heat=`<div class="tbl-wrap"><table class="tbl heat-tbl"><thead><tr><th>Categoría</th>${hm.map(m=>`<th class="num">${monthShort(m)}</th>`).join('')}<th class="num">Total</th></tr></thead><tbody>${hRows||''}</tbody></table></div><div class="vsub">Más oscuro = mes con más ${isExp?'gasto':'ingreso'} de esa categoría.</div>`;
+  const hIds=scopeIds('stats','stats.heat'), hAll=inRange(flows(hIds,F),from,to), hm=months.slice(-12);
+  const hRows=[...groupSum(hAll,gk,kind)].sort((a,b)=>b[1]-a[1]).map(([p])=>{ const vals=hm.map(m=>hAll.filter(x=>x.ym===m&&x.k===kind&&gk(x)===p).reduce((s,x)=>s+x.v,0)); const mx=Math.max(1,...vals);
+    return `<tr><td class="nowrap">${esc(gName(p))}</td>${vals.map((x,i)=>{ const a=Math.max(0,x)/mx; return `<td class="num heat" style="--a:${Math.round(a*85)}%"${tipAttr([gName(p)+' · '+monthLong(hm[i]),'Importe\t'+money(x)])}><span class="${a>0.6?'on':''}">${x?NF_COMPACT.format(x/100):''}</span></td>`; }).join('')}<td class="num"><b>${money0(vals.reduce((a,b)=>a+b,0))}</b></td></tr>`; }).join('');
+  const heat=`<div class="tbl-wrap"><table class="tbl heat-tbl"><thead><tr><th>${bySub?'Subcategoría':'Categoría'}</th>${hm.map(m=>`<th class="num">${monthShort(m)}</th>`).join('')}<th class="num">Total</th></tr></thead><tbody>${hRows||''}</tbody></table></div><div class="vsub">Más oscuro = mes con más ${isExp?'gasto':'ingreso'} de esa ${catWord}.</div>`;
   /* Detalle de una categoría */
   let detail='';
   if(st.cat&&byP.has(st.cat)){
-    const dIds=scopeIds('stats','stats.detail'), dAll=flows(dIds,st.label), dm=ymRange(ymAdd(ymOf(to),-23),ymOf(to));
-    const dv=dm.map(m=>dAll.filter(x=>x.ym===m&&x.k===kind&&(x.par||'__none')===st.cat).reduce((s,x)=>s+x.v,0));
-    const sOf=statsOf(dv.slice(-12)), dCur=inRange(dAll,from,to).filter(x=>x.k===kind&&(x.par||'__none')===st.cat);
+    const dIds=scopeIds('stats','stats.detail'), dAll=flows(dIds,F), dm=ymRange(ymAdd(ymOf(to),-23),ymOf(to));
+    const dv=dm.map(m=>dAll.filter(x=>x.ym===m&&x.k===kind&&gk(x)===st.cat).reduce((s,x)=>s+x.v,0));
+    const sOf=statsOf(dv.slice(-12)), dCur=inRange(dAll,from,to).filter(x=>x.k===kind&&gk(x)===st.cat);
     const pay=[...groupSum(dCur,x=>x.m.payee||movConcept(x.m)||'—',kind)].sort((a,b)=>b[1]-a[1]).slice(0,8);
-    const dChart=colChart({labels:dm.map(monthShort),tipTitles:dm.map(monthLong),series:[{name:parentName(st.cat),color:catColor(st.cat,kind),values:dv.map(x=>x/100)}],line:{name:'Media de 12 meses',color:'var(--ink-2)',dots:false,values:dm.map((_,i)=>statsOf(dv.slice(Math.max(0,i-11),i+1)).avg/100)}});
-    detail=vizCard({title:parentName(st.cat),sub:'Últimos 24 meses',per:{from:dm[0]+'-01',to,note:`medias: ${rangeTxt(dm[12]+'-01',to)} · beneficiarios: ${rangeTxt(from,to)}`},page:'stats',el:'stats.detail',wide:true,actions:`<button class="btn ghost sm" data-act="st-cat-close">${icon('x','ic xs')}Cerrar</button>`,
+    const dChart=colChart({labels:dm.map(monthShort),tipTitles:dm.map(monthLong),series:[{name:gName(st.cat),color:gColor(st.cat),values:dv.map(x=>x/100)}],line:{name:'Media de 12 meses',color:'var(--ink-2)',dots:false,values:dm.map((_,i)=>statsOf(dv.slice(Math.max(0,i-11),i+1)).avg/100)}});
+    detail=vizCard({title:gName(st.cat),sub:'Últimos 24 meses',per:{from:dm[0]+'-01',to,note:`medias: ${rangeTxt(dm[12]+'-01',to)} · beneficiarios: ${rangeTxt(from,to)}`},page:'stats',el:'stats.detail',wide:true,actions:`<button class="btn ghost sm" data-act="st-cat-close">${icon('x','ic xs')}Cerrar</button>`,
       body:`<div class="tiles">${[['Media mensual',sOf.avg],['Mediana',sOf.med],['Mes más alto',sOf.max],['Mes más bajo',sOf.min]].map(([l,x])=>`<div class="tile"><div class="k">${l}</div><div class="tv">${money(x)}</div><div class="td faint">últimos 12 meses</div></div>`).join('')}</div>
-        ${legendHtml([{name:parentName(st.cat),color:catColor(st.cat,kind)},{name:'Media de 12 meses',color:'var(--ink-2)'}])}${vizSlot({draw:dChart,aria:'Evolución de '+parentName(st.cat)},220)}
-        <h3 class="mini-h">Beneficiarios en el periodo</h3><table class="tbl"><tbody>${pay.map(([p,x])=>`<tr><td>${esc(p)}</td><td class="num">${money(x)}</td></tr>`).join('')}</tbody></table>`});
+        ${legendHtml([{name:gName(st.cat),color:gColor(st.cat)},{name:'Media de 12 meses',color:'var(--ink-2)'}])}${vizSlot({draw:dChart,aria:'Evolución de '+gName(st.cat)},220)}
+        <h3 class="mini-h">Beneficiarios en el periodo</h3><table class="tbl"><tbody>${pay.map(([p,x])=>`<tr><td>${esc(p)}</td><td class="num">${money(x)}</td><td class="act-cell">${p!=='—'?stPayeeBtn(p):''}</td></tr>`).join('')}</tbody></table>`});
   }
   /* Beneficiarios, etiquetas, días de la semana y gastos más grandes */
-  const bIds=scopeIds('stats','stats.payees'), bCur=inRange(flows(bIds,st.label),from,to).filter(x=>x.k===kind), gCur=inRange(flows(scopeIds('stats','stats.grandes'),st.label),from,to).filter(x=>x.k===kind);
+  const bIds=scopeIds('stats','stats.payees'), bCur=inRange(flows(bIds,F),from,to).filter(x=>x.k===kind), gCur=inRange(flows(scopeIds('stats','stats.grandes'),F),from,to).filter(x=>x.k===kind);
   const pm=new Map(); for(const x of bCur){ const k=x.m.payee||movConcept(x.m)||'—'; const r=pm.get(k)||{n:0,t:0,last:''}; r.n++; r.t+=x.v; if(x.d>r.last) r.last=x.d; pm.set(k,r); }
   const payees=[...pm].sort((a,b)=>b[1].t-a[1].t).slice(0,15);
-  const payTable=`<div class="tbl-wrap"><table class="tbl tbl-compact"><thead><tr><th>Beneficiario</th><th class="num">Veces</th><th class="num">Total</th><th class="num">Media</th><th>Último</th></tr></thead><tbody>${payees.map(([p,r])=>`<tr class="click" data-st-q="${esc(p)}"><td class="ellip">${esc(p)}</td><td class="num">${r.n}</td><td class="num">${money(r.t)}</td><td class="num">${money(Math.round(r.t/r.n))}</td><td class="nowrap">${fmtDate(r.last)}</td></tr>`).join('')}</tbody></table></div>`;
-  const lIds=scopeIds('stats','stats.labels'), lCur=inRange(flows(lIds),from,to).filter(x=>x.k===kind), lm=new Map();
+  const payTable=`<div class="tbl-wrap"><table class="tbl tbl-compact"><thead><tr><th>Beneficiario</th><th class="num">Veces</th><th class="num">Total</th><th class="num">Media</th><th>Último</th><th><span class="sr">Analizar</span></th></tr></thead><tbody>${payees.map(([p,r])=>`<tr class="click" data-st-q="${esc(p)}" title="Ver sus movimientos"><td class="ellip">${esc(p)}</td><td class="num">${r.n}</td><td class="num">${money(r.t)}</td><td class="num">${money(Math.round(r.t/r.n))}</td><td class="nowrap">${fmtDate(r.last)}</td><td class="act-cell">${p!=='—'&&!st.payee?stPayeeBtn(p):''}</td></tr>`).join('')||'<tr><td colspan="6" class="faint">Sin datos</td></tr>'}</tbody></table></div>`;
+  /* Por etiqueta: todas las etiquetas, con los filtros de categoría y beneficiario */
+  const lIds=scopeIds('stats','stats.labels'), lCur=inRange(flows(lIds,{cat:st.fcat,payee:st.payee}),from,to).filter(x=>x.k===kind), lm=new Map();
   for(const x of lCur) for(const l of x.m.labels){ const r=lm.get(l)||{n:0,t:0}; r.n++; r.t+=x.v; lm.set(l,r); }
   const labRows=[...lm].sort((a,b)=>b[1].t-a[1].t), lMax=Math.max(1,...labRows.map(x=>x[1].t));
   const labHtml=labRows.length?`<div class="hbars">${labRows.map(([l,r])=>`<div class="hb"${tipAttr([l,'Total\t'+money(r.t),'Movimientos\t'+r.n])}><span class="hb-l">${esc(l)}</span><span class="hb-bar"><span style="width:${Math.max(0,r.t)/lMax*100}%;background:var(--s1)"></span></span><span class="hb-v">${money(r.t)}</span></div>`).join('')}</div>`:'<p class="muted">Ningún movimiento del periodo tiene etiquetas.</p>';
-  const wIds=scopeIds('stats','stats.week'), wCur=inRange(flows(wIds,st.label),from,to).filter(x=>x.k===kind), wd=[0,0,0,0,0,0,0];
+  const wIds=scopeIds('stats','stats.week'), wCur=inRange(flows(wIds,F),from,to).filter(x=>x.k===kind), wd=[0,0,0,0,0,0,0];
   for(const x of wCur){ const d=parseYMD(x.d).getDay(); wd[(d+6)%7]+=x.v; }
   const weeks=Math.max(1,(daysBetween(from,to<todayYMD()?to:todayYMD())+1)/7), WD=['lun','mar','mié','jue','vie','sáb','dom'];
   const weekChart=colChart({labels:WD,tipTitles:['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo'],series:[{name:'Media por semana',color:'var(--s1)',values:wd.map(x=>x/weeks/100)}]});
@@ -2579,16 +2633,16 @@ function renderStats(){
   v.innerHTML=`${filters}<div class="vgrid">
     ${kpis}
     ${vizCard({title:'Avisos',per:insightsPer(),page:'stats',el:'stats.avisos',wide:true,body:insightsHtml(ins,10)})}
-    ${vizCard({title:'Ingresos y gastos por mes',per,page:'stats',el:'stats.evol',wide:true,body:legendHtml([{name:'Ingresos',color:'var(--s1)'},{name:'Gastos',color:'var(--s2)'}])+vizSlot({draw:ev,aria:'Ingresos y gastos por mes'},250),table:evTable})}
-    ${vizCard({title:'Ahorro de cada mes',per,page:'stats',el:'stats.ahorro',body:vizSlot({draw:sav,aria:'Ahorro de cada mes'},210)})}
+    ${vizCard({title:focus?kindName+' por mes':'Ingresos y gastos por mes',per,page:'stats',el:'stats.evol',wide:true,body:evLegend+vizSlot({draw:ev,aria:focus?kindName+' por mes':'Ingresos y gastos por mes'},250),table:evTable})}
+    ${focus?'':`${vizCard({title:'Ahorro de cada mes',per,page:'stats',el:'stats.ahorro',body:vizSlot({draw:sav,aria:'Ahorro de cada mes'},210)})}
     ${vizCard({title:'Ahorro acumulado',per,page:'stats',el:'stats.acum',body:vizSlot({draw:cumChart,aria:'Ahorro acumulado'},210)})}
-    ${vizCard({title:'Tasa de ahorro',sub:'Porcentaje de los ingresos que se ahorra cada mes',per,page:'stats',el:'stats.tasa',body:vizSlot({draw:rateChart,aria:'Tasa de ahorro mensual'},210)})}
-    ${vizCard({title:'Composición: '+kindName.toLowerCase(),sub:'Pulsa una categoría para ver sus subcategorías y su evolución',per:perVs,page:'stats',el:'stats.comp',wide:true,body:`<div class="comp"><div class="comp-donut">${vizSlot({draw:donutChart({items:donutItems,center:money0(totK),sub:kindName}),aria:'Composición por categoría'},240)}${legendHtml(donutItems)}</div><div class="comp-table">${compTable}</div></div>`})}
+    ${vizCard({title:'Tasa de ahorro',sub:'Porcentaje de los ingresos que se ahorra cada mes',per,page:'stats',el:'stats.tasa',body:vizSlot({draw:rateChart,aria:'Tasa de ahorro mensual'},210)})}`}
+    ${vizCard({title:'Composición: '+(bySub?stCatName(st.fcat)+' por subcategoría':kindName.toLowerCase()),sub:bySub?'Pulsa una subcategoría para ver su evolución':'Pulsa una categoría para ver sus subcategorías y su evolución',per:perVs,page:'stats',el:'stats.comp',wide:true,body:`<div class="comp"><div class="comp-donut">${vizSlot({draw:donutChart({items:donutItems,center:money0(totK),sub:kindName}),aria:'Composición por categoría'},240)}${legendHtml(donutItems)}</div><div class="comp-table">${compTable}</div></div>`})}
     ${detail}
-    ${vizCard({title:'Evolución por categoría',per,page:'stats',el:'stats.stack',wide:true,body:legendHtml(stackSeries)+vizSlot({draw:stackChart,aria:'Evolución mensual por categoría'},280),
+    ${vizCard({title:'Evolución por '+catWord,per,page:'stats',el:'stats.stack',wide:true,body:legendHtml(stackSeries)+vizSlot({draw:stackChart,aria:'Evolución mensual por categoría'},280),
       table:`<table class="tbl"><thead><tr><th>Mes</th>${stackSeries.map(s=>`<th class="num">${esc(s.name)}</th>`).join('')}</tr></thead><tbody>${months.map((m,i)=>`<tr><td>${monthLong(m)}</td>${stackSeries.map(s=>`<td class="num">${money(Math.round(s.values[i]*100))}</td>`).join('')}</tr>`).join('')}</tbody></table>`})}
-    ${vizCard({title:'Mapa de calor por categoría',sub:'Últimos 12 meses del periodo',per:{from:hm[0]+'-01'>from?hm[0]+'-01':from,to},page:'stats',el:'stats.heat',wide:true,body:heat})}
-    ${vizCard({title:'Beneficiarios',sub:'Los 15 con más importe',per,page:'stats',el:'stats.payees',span2:true,body:payTable})}
+    ${vizCard({title:'Mapa de calor por '+catWord,sub:'Últimos 12 meses del periodo',per:{from:hm[0]+'-01'>from?hm[0]+'-01':from,to},page:'stats',el:'stats.heat',wide:true,body:heat})}
+    ${vizCard({title:'Beneficiarios',sub:st.payee?'Pulsa para ver sus movimientos':'Los 15 con más importe · pulsa el embudo para analizar uno',per,page:'stats',el:'stats.payees',span2:true,body:payTable})}
     ${vizCard({title:'Por etiqueta',per,page:'stats',el:'stats.labels',body:labHtml})}
     ${vizCard({title:'Por día de la semana',sub:'Media semanal en el periodo',per,page:'stats',el:'stats.week',body:vizSlot({draw:weekChart,aria:'Importe por día de la semana'},200),table:`<table class="tbl"><tbody>${WD.map((d,i)=>`<tr><td>${d}</td><td class="num">${money(Math.round(wd[i]/weeks))}</td></tr>`).join('')}</tbody></table>`})}
     ${vizCard({title:isExp?'Gastos más grandes':'Ingresos más grandes',per,page:'stats',el:'stats.grandes',span2:true,body:bigTable})}
@@ -4876,8 +4930,12 @@ function renderHelp(){
 
   <h2>Estadísticas</h2>
   <ul><li><b>Periodo</b>: este mes, el anterior, los últimos 3, 6 o 12 meses, este año, el anterior, todo o personalizado. Las variaciones se comparan con el periodo anterior del mismo tamaño y con el mismo periodo del año anterior. Si el periodo es el mes en curso, se compara con <b>los mismos días</b> del mes anterior (p. ej. del 1 al 10). Cada panel dice en su cabecera, junto al icono del calendario, qué fechas muestra y con cuáles se compara; las columnas «vs periodo anterior» y «vs año anterior» también lo indican.</li>
-  <li><b>Analizar</b>: gastos o ingresos. <b>Etiqueta</b>: limita todo a los movimientos con esa etiqueta (por ejemplo, un viaje).</li>
-  <li>En <b>Composición</b>, pulsa una categoría para ver sus subcategorías y su evolución de 24 meses con la media. Pulsa un beneficiario para ver sus movimientos.</li>
+  <li><b>Analizar</b>: gastos o ingresos.</li>
+  <li><b>Categoría</b>: elige <b>Todo «(categoría)»</b> para ver una categoría principal entera, o una subcategoría, o <b>Sin categoría</b>. Con una categoría elegida, Composición, Evolución y Mapa de calor se desglosan <b>por subcategoría</b>. La lista solo muestra las categorías del tipo que analizas (gastos o ingresos).</li>
+  <li><b>Beneficiario</b>: escribe y elige uno de la lista (los que no tienen beneficiario aparecen por su concepto). También puedes pulsar el embudo <svg class="ic xs"><use href="#i-filter"/></svg> de una fila en <b>Beneficiarios</b>. Si ese beneficiario solo tiene ingresos, se cambia solo a <b>Ingresos</b>. Para quitarlo, vacía el campo o pulsa su ×.</li>
+  <li><b>Etiqueta</b>: limita todo a los movimientos con esa etiqueta (por ejemplo, un viaje).</li>
+  <li>Los tres filtros se pueden combinar (p. ej. Supermercado + Mercadona + «Tarjeta Carlos»). Debajo de los filtros se ve qué estás mirando y <b>Quitar filtros</b> los borra todos. Con una categoría o un beneficiario, el <b>Resumen del periodo</b> muestra el total, la variación, la media al mes, el número de movimientos y qué parte del total supone, y los paneles de ahorro se ocultan. Los <b>Avisos</b> no se filtran.</li>
+  <li>En <b>Composición</b>, pulsa una categoría para ver sus subcategorías y su evolución de 24 meses con la media. Pulsa un beneficiario para ver sus movimientos (con el mismo periodo, categoría y etiqueta).</li>
   <li>Pasa el ratón por cualquier gráfico para ver las cifras, o pulsa <b>Ver como tabla</b>.</li>
   <li><b>Avisos</b>: presupuestos superados o en riesgo, categorías que el mes pasado gastaron mucho más que su media, meses con más gastos que ingresos, recibos que suben, gastos poco habituales, movimientos sin categoría, saldos descuadrados e importaciones antiguas.</li></ul>
 
@@ -5065,6 +5123,7 @@ document.addEventListener('click',async e=>{
         if(vw==='estadisticas'&&act.dataset.cat){ ui.st.cat=act.dataset.cat; ui.st.kind='gasto'; }
         saveUI(); go(vw); return; }
       case 'st-cat-close': ui.st.cat=''; saveUI(); renderStats(); return;
+      case 'st-clear': Object.assign(ui.st,{label:'',fcat:'',payee:'',cat:''}); saveUI(); renderStats(); return;
       case 'bud-new': openBudgetDialog(null,act.dataset.cat||''); return;
       case 'bud-edit': openBudgetDialog(act.dataset.id); return;
       case 'bud-propose': openProposeDialog(); return;
@@ -5101,8 +5160,9 @@ document.addEventListener('click',async e=>{
   const ru=t.closest('tr[data-rule]'); if(ru){ openRuleDialog(ru.dataset.rule); return; }
   const am=t.closest('tr[data-acc-movs]'); if(am){ Object.assign(ui.mf,{acc:am.dataset.accMovs,from:'',to:'',cat:'',label:'',state:'',q:'',page:0}); go('movimientos'); return; }
   const sk=t.closest('[data-st-kind]'); if(sk){ ui.st.kind=sk.dataset.stKind; ui.st.cat=''; saveUI(); renderStats(); return; }
+  const sp=t.closest('[data-st-payee]'); if(sp){ ui.st.payee=sp.dataset.stPayee; ui.st.cat=''; stPayeeKind(ui.st.payee); saveUI(); renderStats(); window.scrollTo({top:0,behavior:'smooth'}); return; }
   const sc=t.closest('tr[data-st-cat]'); if(sc){ ui.st.cat=ui.st.cat===sc.dataset.stCat?'':sc.dataset.stCat; saveUI(); renderStats(); return; }
-  const sq=t.closest('tr[data-st-q]'); if(sq){ const [f,to]=periodRange(ui.st.period,ui.st.from,ui.st.to); Object.assign(ui.mf,{acc:'',from:f,to,cat:'',label:ui.st.label||'',state:'',q:sq.dataset.stQ,page:0}); saveUI(); go('movimientos'); return; }
+  const sq=t.closest('tr[data-st-q]'); if(sq){ const [f,to]=periodRange(ui.st.period,ui.st.from,ui.st.to); Object.assign(ui.mf,{acc:'',from:f,to,cat:ui.st.fcat||'',label:ui.st.label||'',state:'',q:sq.dataset.stQ,page:0}); saveUI(); go('movimientos'); return; }
   const bmd=t.closest('[data-bal-mode]'); if(bmd){ ui.bal.mode=bmd.dataset.balMode; saveUI(); renderBalance(); return; }
   const bac=t.closest('[data-bal-acc]'); if(bac){ const id=bac.dataset.balAcc;
     if(id==='__def') delete ui.bal.accs; else { const cur=new Set(balAccIds()); cur.has(id)?cur.delete(id):cur.add(id); ui.bal.accs=[...cur]; }
@@ -5114,6 +5174,10 @@ document.addEventListener('click',async e=>{
 let searchTimer=null;
 document.addEventListener('input',e=>{
   const t=e.target;
+  /* Beneficiario de las estadísticas: se aplica al elegirlo en la lista o al vaciar el campo (la × del buscador) */
+  if(t.dataset&&t.dataset.st==='payee'){ const v=t.value.trim();
+    if((!v&&ui.st.payee)||(v&&(!e.inputType||e.inputType==='insertReplacementText')&&stPayeeList().some(n=>n===v))){ ui.st.payee=v; ui.st.cat=''; stPayeeKind(v); saveUI(); renderStats(); }
+    return; }
   if(t.dataset&&t.dataset.mf){
     ui.mf[t.dataset.mf]=t.value; ui.mf.page=0; saveUI();
     clearTimeout(searchTimer);
@@ -5126,7 +5190,9 @@ document.addEventListener('input',e=>{
 });
 document.addEventListener('change',e=>{
   const t=e.target;
-  if(t.dataset&&t.dataset.st){ ui.st[t.dataset.st]=t.value; if(t.dataset.st==='period'&&t.value==='custom'){ const [f,to]=periodRange('12m'); ui.st.from=ui.st.from||f; ui.st.to=ui.st.to||todayYMD(); } saveUI(); renderStats(); return; }
+  if(t.dataset&&t.dataset.st){ const k=t.dataset.st; if(k==='payee'&&t.value.trim()===ui.st.payee) return; ui.st[k]=k==='payee'?t.value.trim():t.value;
+    if(k==='fcat'||k==='payee'||k==='label') ui.st.cat=''; if(k==='payee') stPayeeKind(ui.st.payee);
+    if(k==='period'&&t.value==='custom'){ const [f,to]=periodRange('12m'); ui.st.from=ui.st.from||f; ui.st.to=ui.st.to||todayYMD(); } saveUI(); renderStats(); return; }
   if(t.dataset&&t.dataset.bal){ ui.bal[t.dataset.bal]=t.value; saveUI(); renderBalance(); return; }
   if(t.id==='showArch'){ ui.showArchived=t.checked; saveUI(); renderAccounts(); return; }
   if(t.id==='bcOnly'){ const f=imp.files[imp.sel]; if(f){ f.bcIncludeOnly=t.checked; renderImport(); } return; }
