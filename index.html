@@ -473,6 +473,21 @@ dl.kv.avail{margin-top:10px}
 
 /* Bluecoins opcional, sincronización y piezas solo del móvil */
 body.no-bc .bc-only{display:none!important}
+.panel.lot+.panel.lot{margin-top:12px}
+.lot-head{display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap}
+.lot-head .grow{flex:1;min-width:200px}
+.lot-acts{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0 8px}
+.bc-bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:10px}
+.bc-from{display:inline-flex;align-items:center;gap:8px;font-weight:600}
+.bc-from .inp{width:auto}
+details.bc-opts{margin:4px 0 12px}
+details.bc-opts summary{cursor:pointer;color:var(--muted);font-size:13px;font-weight:600;display:inline-flex;align-items:center;gap:6px}
+.bc-opts-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-top:10px}
+.bc-go{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:12px}
+.bc-others{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.bc-others li{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.bc-others li>span{flex:1;min-width:200px}
+.bc-done-list{max-height:45vh;overflow:auto;display:flex;flex-direction:column;gap:4px;margin-top:10px;padding:8px;border:1px solid var(--line);border-radius:9px}
 .set-grid .panel.span2{grid-column:1/-1}
 .sync-st{margin:0 0 10px;font-size:13.5px;color:var(--muted)}
 .sync-st.bad{color:var(--neg)}
@@ -612,6 +627,7 @@ body.no-bc .bc-only{display:none!important}
       <div class="nav-sep"></div>
       <button class="nav-btn" data-view="movimientos" title="Movimientos (Alt+5)"><svg class="ic"><use href="#i-list"/></svg>Movimientos<span class="badge" id="navMovBadge" hidden></span></button>
       <button class="nav-btn" data-view="importar" title="Importar (Alt+6)"><svg class="ic"><use href="#i-file-in"/></svg>Importar</button>
+      <button class="nav-btn bc-only" data-view="exportar" title="Exportar a Bluecoins"><svg class="ic"><use href="#i-send"/></svg>Exportar a Bluecoins<span class="badge" id="navExpBadge" hidden></span></button>
       <button class="nav-btn" data-view="controles" title="Controles de saldo (Alt+7)"><svg class="ic"><use href="#i-scale"/></svg>Controles<span class="badge warn" id="navChkBadge" hidden></span></button>
       <div class="nav-sep"></div>
       <button class="nav-btn" data-view="cuentas" title="Cuentas (Alt+8)"><svg class="ic"><use href="#i-wallet"/></svg>Cuentas</button>
@@ -834,7 +850,7 @@ const PAGE=200;
 const BANKS={bbva:'BBVA',ing:'ING',tr:'Trade Republic',otro:'Otro'};
 const ACC_KINDS={corriente:'Cuenta corriente',ahorro:'Ahorro / remunerada',tarjeta_debito:'Tarjeta de débito',tarjeta_credito:'Tarjeta de crédito',inversion:'Inversión',efectivo:'Efectivo',prestamo:'Préstamo / hipoteca'};
 const MOV_KINDS={gasto:'Gasto',ingreso:'Ingreso',transferencia:'Transferencia'};
-const VIEWS={resumen:'Resumen',estadisticas:'Estadísticas',balance:'Balance',presupuestos:'Presupuestos',movimientos:'Movimientos',importar:'Importar',controles:'Controles de saldo',cuentas:'Cuentas',categorias:'Categorías y etiquetas',reglas:'Reglas',ajustes:'Ajustes',instrucciones:'Instrucciones'};
+const VIEWS={resumen:'Resumen',estadisticas:'Estadísticas',balance:'Balance',presupuestos:'Presupuestos',movimientos:'Movimientos',importar:'Importar',controles:'Controles de saldo',cuentas:'Cuentas',categorias:'Categorías y etiquetas',reglas:'Reglas',ajustes:'Ajustes',instrucciones:'Instrucciones',exportar:'Exportar a Bluecoins'};
 const VIEW_KEYS=Object.keys(VIEWS);
 
 /* ================= Utilidades ================= */
@@ -1782,44 +1798,106 @@ function causesFor(accId,date){
   return out;
 }
 
-/* ================= Exportación CSV para Bluecoins (formato a confirmar con la calibración) ================= */
-/* Cabecera exacta de la plantilla estándar de Bluecoins (Bluecoins_CSV_Standard_Template.csv) */
+/* ================= Exportación a Bluecoins =================
+   Plantilla estándar oficial de Bluecoins (12 columnas). Las transferencias van en dos filas seguidas: la salida en
+   negativo y la entrada en positivo. El tipo (e/i) sale de la categoría y el importe lleva su signo, así que en Bluecoins
+   hay que desactivar «Ignorar signo del importe» para que las devoluciones apuntadas como gasto entren en positivo.
+   Las etiquetas se separan con espacios en el archivo (como en la plantilla): las que llevan espacios se tratan según
+   la opción elegida. Bluecoins no detecta duplicados: cada movimiento se pasa una sola vez (exportId = lote). */
 const BC_HEADER=['(1)Type','(2)Date','(3)Item or Payee','(4)Amount','(5)Category Type','(6)Category','(7)Account Type','(8)Account','(9)Notes','(10) Label','(11) Status','(12) Split'];
-const BC_TRANSFER_CAT='(Transferir)';
+const BC_DATE_FMTS={dmy:['dd/mm/aaaa','dd/MM/yyyy'],mdy:['m/d/aaaa, como la plantilla','M/d/yyyy'],ymd:['aaaa-mm-dd','yyyy-MM-dd']};
+const BC_LABEL_MODES={skip:'No pasar las que llevan espacios',join:'Cambiar sus espacios por «_»',asis:'Pasarlas tal cual (Bluecoins las parte en varias)'};
+const BC_TRANSFER_CATS=['(Transferir)','(Transfer)'];
+function bcOpts(){
+  const o=getMeta('bcExport')||{};
+  return {dateFmt:BC_DATE_FMTS[o.dateFmt]?o.dateFmt:'dmy',labels:BC_LABEL_MODES[o.labels]?o.labels:'skip',
+    transferCat:BC_TRANSFER_CATS.includes(o.transferCat)?o.transferCat:BC_TRANSFER_CATS[0],from:validYMD(o.from)?o.from:''};
+}
 function csvField(v,sep=','){ v=v==null?'':String(v); return (v.includes(sep)||/["\r\n]/.test(v)||/^\s|\s$/.test(v))?'"'+v.replace(/"/g,'""')+'"':v; }
 function bluecoinsCsv(rows,{header=BC_HEADER,bom=false,eol='\r\n'}={}){
   const lines=[header.map(h=>csvField(h)).join(',')];
   for(const r of rows) lines.push([r.type,r.date,r.payee,r.amount,r.parent,r.category,r.accountType,r.account,r.notes,r.labels,r.status,r.split].map(v=>csvField(v)).join(','));
   return (bom?'﻿':'')+lines.join(eol)+eol;
 }
-const bcDate=s=>{ const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(s); return m?`${m[3]}/${m[2]}/${m[1]}`:''; };
-/* Movimientos → filas de Bluecoins. Las transferencias salen en dos filas seguidas: primero la salida (negativa) y luego la entrada. */
-function movementsToBluecoinsRows(movs){
-  const rows=[], done=new Set(), errors=[];
-  const acc=id=>{ const a=S.accounts.get(id); return a?{name:a.bluecoins.name||a.name,type:a.bluecoins.type||'Banco'}:null; };
-  const cat=id=>{ const c=S.categories.get(id); const p=c&&c.parent&&S.categories.get(c.parent); return c&&p?{parent:p.name,category:c.name}:null; };
+function bcDate(s,fmt='dmy'){
+  const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(s||''); if(!m) return '';
+  return fmt==='mdy'?`${+m[2]}/${+m[3]}/${m[1]}`:fmt==='ymd'?s:`${m[3]}/${m[2]}/${m[1]}`;
+}
+/* Etiquetas en una sola celda, separadas por espacios */
+function bcLabels(labels,mode='skip'){
+  const out=[];
+  for(const l of labels||[]){ if(!/\s/.test(l)) out.push(l); else if(mode==='join') out.push(l.trim().replace(/\s+/g,'_')); else if(mode==='asis') out.push(l); }
+  return out.join(' ');
+}
+const bcText=s=>String(s||'').replace(/\s*[\r\n]+\s*/g,' / ').trim();
+function bcAcc(id){ const a=S.accounts.get(id); return a&&a.bluecoins.name?{name:a.bluecoins.name,type:a.bluecoins.type||'Banco'}:null; }
+/* Agrupa los movimientos en unidades (una transferencia = sus dos mitades) y dice qué hacer con cada una:
+   rows (sus filas del archivo), skip (no hace falta pasarla) o error (hay que corregir algo antes).
+   lotId: el lote que se está rehaciendo (sus movimientos cuentan como no exportados). */
+function bcUnits(movs,opts=bcOpts(),lotId=null){
+  const pairs=new Map();
+  for(const x of S.movements.values()) if(x.transferPairId){ if(!pairs.has(x.transferPairId)) pairs.set(x.transferPairId,[]); pairs.get(x.transferPairId).push(x); }
+  const exported=x=>!!x.exportId&&x.exportId!==lotId;
+  const units=[], seen=new Set();
   for(const m of movs){
-    if(done.has(m.id)) continue; done.add(m.id);
-    const a=acc(m.accountId); if(!a){ errors.push({id:m.id,error:'Cuenta desconocida'}); continue; }
-    const base={payee:m.payee||movConcept(m),notes:m.notes,labels:m.labels.join(' '),status:'',split:'',date:bcDate(m.date)};
+    if(seen.has(m.id)) continue; seen.add(m.id);
+    const u={m,ids:[m.id],date:m.date,rows:[],skip:'',error:''}; units.push(u);
+    const a=bcAcc(m.accountId);
+    const base={date:bcDate(m.date,opts.dateFmt),payee:bcText(m.payee||movConcept(m)),notes:bcText(m.notes),labels:bcLabels(m.labels,opts.labels),status:'',split:''};
     if(m.kind==='transferencia'){
-      const pair=m.transferPairId?[...S.movements.values()].find(x=>x.transferPairId===m.transferPairId&&x.id!==m.id):null;
-      const otherId=pair?pair.accountId:m.transferAccountId, o=acc(otherId);
-      if(!o){ errors.push({id:m.id,error:'Transferencia sin cuenta de destino'}); continue; }
-      if(pair) done.add(pair.id);
-      const amt=Math.abs(m.amountCents);
-      const outA=m.amountCents<0?a:o, inA=m.amountCents<0?o:a;
-      /* Las dos cuentas son la misma en Bluecoins (p. ej. tarjeta que se apunta en la cuenta del banco): no hay nada que pasar */
-      if(outA.name===inA.name&&outA.type===inA.type){ errors.push({id:m.id,error:'Transferencia dentro de la misma cuenta de Bluecoins',skip:true}); continue; }
-      rows.push({...base,type:'t',amount:centsToPlain(-amt),parent:BC_TRANSFER_CAT,category:BC_TRANSFER_CAT,accountType:outA.type,account:outA.name});
-      rows.push({...base,type:'t',amount:centsToPlain(amt),parent:BC_TRANSFER_CAT,category:BC_TRANSFER_CAT,accountType:inA.type,account:inA.name});
+      const p=(pairs.get(m.transferPairId)||[]).find(x=>x.id!==m.id)||null;
+      if(p){ seen.add(p.id); if(!exported(p)) u.ids.push(p.id); u.pair=p; }
+      if(p&&exported(p)){ u.skip='La otra mitad ya está en Bluecoins'; continue; }
+      const otherId=p?p.accountId:m.transferAccountId;
+      if(!otherId){ u.error='Transferencia sin la otra cuenta'; continue; }
+      const o=bcAcc(otherId);
+      if(!a||!o){ u.error=`La cuenta ${accName(!a?m.accountId:otherId)} no tiene nombre en Bluecoins`; continue; }
+      const amt=Math.abs(m.amountCents), outA=m.amountCents<0?a:o, inA=m.amountCents<0?o:a;
+      /* Las dos son la misma cuenta en Bluecoins (p. ej. la tarjeta se apunta en la cuenta del banco): no hay nada que pasar */
+      if(outA.name===inA.name&&outA.type===inA.type){ u.skip='Dentro de la misma cuenta de Bluecoins'; continue; }
+      u.rows.push({...base,type:'t',amount:centsToPlain(-amt),parent:opts.transferCat,category:opts.transferCat,accountType:outA.type,account:outA.name});
+      u.rows.push({...base,type:'t',amount:centsToPlain(amt),parent:opts.transferCat,category:opts.transferCat,accountType:inA.type,account:inA.name});
       continue;
     }
-    const c=cat(m.categoryId); if(!c){ errors.push({id:m.id,error:'Sin categoría'}); continue; }
-    rows.push({...base,type:m.kind==='ingreso'?'i':'e',amount:centsToPlain(m.amountCents),parent:c.parent,category:c.category,accountType:a.type,account:a.name});
+    if(!a){ u.error=`La cuenta ${accName(m.accountId)} no tiene nombre en Bluecoins`; continue; }
+    const c=m.categoryId&&S.categories.get(m.categoryId), par=c&&c.parent&&S.categories.get(c.parent);
+    if(!c){ u.error='Sin categoría'; continue; }
+    if(!par){ u.error='Solo tiene la categoría principal: Bluecoins necesita también la subcategoría'; continue; }
+    u.rows.push({...base,type:(c.kind||par.kind)==='ingreso'?'i':'e',amount:centsToPlain(m.amountCents),parent:par.name,category:c.name,accountType:a.type,account:a.name});
   }
-  return {rows,errors};
+  return units;
 }
+/* Compatibilidad: filas y errores de una lista de movimientos */
+function movementsToBluecoinsRows(movs,opts=bcOpts()){
+  const units=bcUnits(movs,opts);
+  return {rows:units.flatMap(u=>u.rows),errors:units.filter(u=>u.error||u.skip).map(u=>({id:u.m.id,error:u.error||u.skip,skip:!!u.skip}))};
+}
+/* Primer día que falta en Bluecoins: el siguiente al último movimiento que ya estaba allí (historial de Bluecoins) */
+function bcDefaultFrom(){
+  let last='';
+  for(const m of S.movements.values()) if((m.exportId==='bluecoins'||m.bcRef)&&m.date>last) last=m.date;
+  return last?addDays(last,1):'';
+}
+const bcLots=()=>[...S.exports.values()].filter(x=>x.kind==='bluecoins').sort((a,b)=>(b.at||'').localeCompare(a.at||''));
+const bcPendingLots=()=>bcLots().filter(x=>x.status==='pendiente');
+/* Qué se puede pasar ahora a Bluecoins y por qué no el resto */
+function bcExportState(opts=bcOpts()){
+  const today=todayYMD(), defFrom=bcDefaultFrom(), from=opts.from||defFrom;
+  const pool=[...S.movements.values()].filter(m=>!m.exportId&&!m.historic)
+    .sort((a,b)=>a.date.localeCompare(b.date)||(a.createdAt||'').localeCompare(b.createdAt||'')||a.id.localeCompare(b.id));
+  const before=from?pool.filter(m=>m.date<from):[], future=pool.filter(m=>m.date>today);
+  const units=bcUnits(pool.filter(m=>(!from||m.date>=from)&&m.date<=today),opts);
+  const st={from,defFrom,before,future,ready:[],skip:[],norev:[],pend:[],error:[]};
+  for(const u of units){
+    const ms=u.ids.map(id=>S.movements.get(id));
+    u.state=ms.some(x=>x.pending)?'pend':u.skip?'skip':!ms.some(x=>x.reviewed)?'norev':u.error?'error':'ready';
+    st[u.state].push(u);
+  }
+  return st;
+}
+/* Datos de cada unidad que se guardan en el lote (para confirmar la importación sin depender de cambios posteriores) */
+const bcUnitInfo=u=>({ids:u.ids,date:u.m.date,text:u.m.kind==='transferencia'?`${u.rows[0]?.account||''} → ${u.rows[1]?.account||''}`:(u.rows[0]?.payee||''),cents:u.m.amountCents,kind:u.m.kind,rows:u.rows.length});
+function bcFileName(){ return `bluecoins-${stamp()}.csv`; }
 
 /* ================= Avisos ================= */
 let toastTimer=null;
@@ -1881,7 +1959,7 @@ function render(){
   $('viewTitle').textContent=VIEWS[ui.view];
   document.title=VIEWS[ui.view]+' · Finanzas';
   const y=window.scrollY;
-  const fn={resumen:renderResumen,estadisticas:renderStats,balance:renderBalance,presupuestos:renderBudgets,movimientos:renderMovs,importar:renderImport,controles:renderChecks,cuentas:renderAccounts,categorias:renderCats,reglas:renderRules,ajustes:renderSettings,instrucciones:renderHelp}[ui.view];
+  const fn={resumen:renderResumen,estadisticas:renderStats,balance:renderBalance,presupuestos:renderBudgets,movimientos:renderMovs,importar:renderImport,controles:renderChecks,cuentas:renderAccounts,categorias:renderCats,reglas:renderRules,ajustes:renderSettings,instrucciones:renderHelp,exportar:renderExport}[ui.view];
   $('topActions').innerHTML=''; fn();
   window.scrollTo(0,y);
   renderSideNotes();
@@ -1892,6 +1970,10 @@ function renderSideNotes(){
   const b=$('navMovBadge'); b.hidden=!pendRev; b.textContent=pendRev>999?'999+':pendRev; b.title=pendRev+' sin revisar';
   const bad=accSorted().filter(a=>{ const c=lastCheck(a.id); return c&&checkLive(c).diff!==0; }).length;
   const cb=$('navChkBadge'); cb.hidden=!bad; cb.textContent=bad; cb.title=bad+' cuentas con descuadre';
+  const eb=$('navExpBadge');
+  if(useBc()){ const pl=bcPendingLots().length, n=pl?0:bcExportState().ready.length;
+    eb.hidden=!(pl||n); eb.className='badge'+(pl?' warn':''); eb.textContent=pl?'!':n>999?'999+':n; eb.title=pl?'Archivo pendiente de importar en Bluecoins':n+' listos para pasar a Bluecoins'; }
+  else eb.hidden=true;
   const sn=$('syncNote'); sn.hidden=!(syncCfg&&syncRt.status==='error'&&syncRt.halt); sn.title=syncRt.err?syncRt.err.msg:'';
   const last=getMeta('lastBackup'), has=S.movements.size+S.accounts.size>0;
   const days=last?daysBetween(ymd(new Date(last)),todayYMD()):null;
@@ -2308,6 +2390,11 @@ function insightsFor(ids){
   if(miss.length) out.push({sev:'crit',text:`${miss.length===1?'Una transferencia cuenta':miss.length+' transferencias cuentan'} solo en una cuenta: ${[...new Set(miss.map(m=>accName(m.transferAccountId)))].join(', ')} no tiene archivos del banco de esas fechas, así que el dinero no aparece allí.`,act:'fix-transfers',actText:'Apuntar la otra mitad'});
   const unm=unmatchedTransfers().filter(m=>ids.has(m.accountId));
   if(unm.length) out.push({sev:'warn',text:`${unm.length===1?'Una transferencia sin pareja':unm.length+' transferencias sin pareja'}: ${unm.length===1?'resta o suma':'restan o suman'} en una sola cuenta. Indica la otra cuenta o cámbiala a gasto o ingreso.`,view:'movimientos',state:'sinpareja'});
+  if(useBc()){
+    for(const x of bcPendingLots()) out.push({sev:'warn',text:`El archivo para Bluecoins del ${fmtDT(x.regeneratedAt||x.at)} está sin confirmar: cuando lo importes en Bluecoins, pulsa «Ya lo he importado en Bluecoins».`,view:'exportar'});
+    const rd=bcExportState().ready.filter(u=>ids.has(u.m.accountId)).length;
+    if(rd) out.push({sev:'info',text:`${rd===1?'Un movimiento revisado está listo':rd+' movimientos revisados están listos'} para pasar a Bluecoins.`,view:'exportar'});
+  }
   const noCat=all.filter(x=>!x.cat&&x.d>=addDays(today,-90)).length; if(noCat) out.push({sev:'info',text:`${noCat} movimientos de los últimos 90 días sin categoría.`,view:'movimientos',state:'sincat'});
   const bad=accSorted().filter(a=>ids.has(a.id)&&lastCheck(a.id)&&checkLive(lastCheck(a.id)).diff!==0); if(bad.length) out.push({sev:'crit',text:`Saldo descuadrado en ${bad.map(a=>a.name).join(', ')}.`,view:'controles'});
   for(const x of staleCards()) if(ids.has(x.card.id)||ids.has(x.host.id)) out.push({sev:'crit',text:staleCardText(x),view:'importar'});
@@ -3993,6 +4080,145 @@ async function scanFolder(gesture){
   }catch(e){ showToast('No se ha podido leer la carpeta: '+e.message,{error:true}); }
 }
 
+/* ================= Vista: Exportar a Bluecoins ================= */
+const bcx={off:new Set()};   /* unidades desmarcadas en «Listos para pasar» (por el id de su primer movimiento) */
+let bcCanShare=null;
+function canShareFiles(){
+  if(bcCanShare==null){ try{ bcCanShare=!!(navigator.canShare&&navigator.canShare({files:[new File(['a'],'a.csv',{type:'text/csv'})]})); }catch(e){ bcCanShare=false; } }
+  return bcCanShare;
+}
+function bcUnitCells(u){
+  const m=u.m, r=u.rows;
+  const acc=m.kind==='transferencia'?`${esc(r[0].account)} → ${esc(r[1].account)}`:esc(r[0].account);
+  const cat=m.kind==='transferencia'?'<span class="muted">Transferencia</span>':`${esc(r[0].parent)} › ${esc(r[0].category)}`;
+  return `<td class="nowrap">${fmtDate(m.date)}</td><td>${acc}</td><td class="ellip">${esc(r[0].payee)}</td><td>${cat}</td><td class="ellip">${r[0].labels?esc(r[0].labels):''}</td><td class="num">${amtHtml(m.amountCents,m.kind)}</td>`;
+}
+function bcLotCard(x){
+  const ms=x.units.flatMap(u=>u.ids).map(id=>S.movements.get(id));
+  const gone=ms.filter(m=>!m).length, changed=ms.filter(m=>m&&m.changedAfterExport).length;
+  const fmt=BC_DATE_FMTS[x.opts?.dateFmt]||BC_DATE_FMTS.dmy;
+  return `<div class="panel lot" data-lot="${x.id}">
+    <div class="lot-head">${icon('file','ic')}<div class="grow"><b>${esc(x.fileName)}</b>
+      <div class="muted">Creado el ${fmtDT(x.regeneratedAt||x.at)} · ${NF_INT.format(x.units.length)} movimientos (${NF_INT.format(x.rowCount)} filas) · del ${fmtDate(x.from)} al ${fmtDate(x.to)}</div></div>
+      <span class="chip warn">Pendiente de importar en Bluecoins</span></div>
+    ${changed||gone?`<ul class="warns">${changed?`<li>${icon('alert','ic xs')}${changed===1?'Un movimiento ha cambiado':changed+' movimientos han cambiado'} después de crear el archivo: pulsa «Volver a generar» antes de importarlo.</li>`:''}${gone?`<li>${icon('alert','ic xs')}${gone===1?'Un movimiento del archivo ya no existe':gone+' movimientos del archivo ya no existen'}: pulsa «Volver a generar».</li>`:''}</ul>`:''}
+    <div class="lot-acts">
+      <button class="btn" data-act="bc-done" data-id="${x.id}">${icon('check')}Ya lo he importado en Bluecoins</button>
+      <button class="btn sec" data-act="bc-dl" data-id="${x.id}">${icon('download')}Descargar</button>
+      ${canShareFiles()?`<button class="btn sec" data-act="bc-share" data-id="${x.id}">${icon('send')}Compartir</button>`:''}
+      <button class="btn ghost" data-act="bc-redo" data-id="${x.id}">${icon('refresh')}Volver a generar</button>
+      <button class="btn ghost" data-act="bc-cancel" data-id="${x.id}">${icon('x')}Anular</button>
+    </div>
+    <p class="faint">En Bluecoins: <span class="path">Ajustes → Datos → Excel (.csv)</span> → elige este archivo → Codificación de archivos <b>UTF-8</b> · Formato de fecha <b>${fmt[1]}</b> · <b>Ignorar signo del importe</b> desactivado.</p>
+  </div>`;
+}
+function renderExport(){
+  const v=$('view');
+  if(!useBc()){ v.innerHTML=`<div class="empty">${icon('send','ic')}<div>En Ajustes has elegido no usar Bluecoins.</div><button class="btn sec" data-act="go-view" data-view="ajustes">${icon('settings')}Ir a Ajustes</button></div>`; return; }
+  const opts=bcOpts(), st=bcExportState(opts), pend=bcPendingLots(), done=bcLots().filter(x=>x.status!=='pendiente');
+  for(const id of [...bcx.off]) if(!st.ready.some(u=>u.m.id===id)) bcx.off.delete(id);
+  const sel=st.ready.filter(u=>!bcx.off.has(u.m.id));
+  const spaced=[...new Set(st.ready.flatMap(u=>u.m.labels).filter(l=>/\s/.test(l)))];
+  const sel3=(k,map,cur)=>`<select class="inp" data-bco="${k}">${Object.entries(map).map(([val,t])=>`<option value="${esc(val)}"${val===cur?' selected':''}>${esc(t)}</option>`).join('')}</select>`;
+  const others=[];
+  if(st.norev.length) others.push(`<li>${icon('clock','ic xs')}<span><b>${st.norev.length}</b> sin revisar: se pasan cuando los marques como revisados.</span><button class="btn ghost sm" data-act="ins-go" data-view="movimientos" data-state="norev">Revisar${icon('chev-r','ic xs')}</button></li>`);
+  if(st.pend.length) others.push(`<li>${icon('clock','ic xs')}<span><b>${st.pend.length}</b> pendientes en el banco: se pasan cuando el banco los confirme.</span></li>`);
+  if(st.future.length) others.push(`<li>${icon('calendar','ic xs')}<span><b>${st.future.length}</b> con fecha futura: se pasan cuando llegue su día.</span></li>`);
+  if(st.skip.length) others.push(`<li>${icon('check','ic xs')}<span><b>${st.skip.length}</b> que no hace falta pasar (transferencias dentro de la misma cuenta de Bluecoins, como las liquidaciones de las tarjetas, o cuya otra mitad ya está allí): se marcan como pasados con el próximo archivo.</span></li>`);
+  if(st.before.length) others.push(`<li>${icon('archive','ic xs')}<span><b>${NF_INT.format(st.before.length)}</b> anteriores al ${fmtDate(st.from)} sin pasar. No se incluyen; si faltan en Bluecoins, cambia la fecha «Desde».</span></li>`);
+  v.innerHTML=`${pend.length?`<section><div class="sec-head"><h2>Archivo pendiente de importar</h2></div>${pend.map(bcLotCard).join('')}</section>`:''}
+    <section class="${pend.length?'view-sec':''}"><div class="sec-head"><h2>Listos para pasar a Bluecoins</h2><span class="chip info">${NF_INT.format(st.ready.length)}</span></div>
+      <div class="bc-bar"><label class="bc-from">Desde <input class="inp" type="date" data-bco="from" value="${esc(st.from)}"></label>
+        ${opts.from&&st.defFrom&&opts.from!==st.defFrom?`<button class="btn ghost sm" data-act="bc-from-def">Volver al ${fmtDate(st.defFrom)}</button>`:''}
+        <span class="faint">${!opts.from&&st.defFrom?'Día siguiente al último movimiento que ya estaba en Bluecoins.':''}</span></div>
+      <details class="bc-opts"${spaced.length&&opts.labels==='asis'?' open':''}><summary>${icon('sliders','ic xs')}Opciones del archivo</summary>
+        <div class="bc-opts-grid">
+          <label class="fld">Formato de la fecha${sel3('dateFmt',Object.fromEntries(Object.entries(BC_DATE_FMTS).map(([k,x])=>[k,x[0]])),opts.dateFmt)}</label>
+          <label class="fld">Etiquetas con espacios${sel3('labels',BC_LABEL_MODES,opts.labels)}</label>
+          <label class="fld">Categoría de las transferencias${sel3('transferCat',Object.fromEntries(BC_TRANSFER_CATS.map(x=>[x,x])),opts.transferCat)}</label>
+        </div>
+        <p class="faint">En el archivo de Bluecoins las etiquetas se separan con espacios, así que una etiqueta como «Tarjeta Ana» llegaría como dos («Tarjeta» y «Ana»).</p>
+      </details>
+      ${spaced.length&&opts.labels!=='asis'?`<ul class="warns"><li>${icon('alert','ic xs')}<span>${opts.labels==='skip'?'No se pasan':'Se pasan con «_» en vez de espacios'} estas etiquetas: ${spaced.map(l=>`<b>${esc(l)}</b>`).join(', ')}. Cámbialo en «Opciones del archivo».</span></li></ul>`:''}
+      ${st.ready.length?`<div class="tbl-wrap tall"><table class="tbl bc-tbl"><thead><tr><th class="chk"><input type="checkbox" id="bcxAll" aria-label="Todos"${sel.length===st.ready.length?' checked':''}></th><th>Fecha</th><th>Cuenta en Bluecoins</th><th>Beneficiario</th><th>Categoría</th><th>Etiquetas</th><th class="num">Importe</th></tr></thead><tbody>
+        ${st.ready.map(u=>`<tr data-mov="${u.m.id}"><td class="chk"><input type="checkbox" data-bcx="${u.m.id}"${bcx.off.has(u.m.id)?'':' checked'} aria-label="Incluir"></td>${bcUnitCells(u)}</tr>`).join('')}
+        </tbody></table></div>
+        <div class="bc-go"><button class="btn" data-act="bc-create"${sel.length?'':' disabled'}>${icon('download')}Crear archivo para Bluecoins (${NF_INT.format(sel.length)})</button>
+          <span class="muted">${NF_INT.format(sel.reduce((n,u)=>n+u.rows.length,0))} filas${sel.length<st.ready.length?` · ${st.ready.length-sel.length} desmarcados se quedan para el próximo`:''}</span></div>`
+      :`<div class="empty sm">${icon('check-circle','ic')}<div>No hay nada nuevo que pasar a Bluecoins.</div></div>`}
+    </section>
+    ${st.error.length?`<section class="view-sec"><div class="sec-head"><h2>Hay que corregirlos antes</h2><span class="chip bad">${st.error.length}</span></div>
+      <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Fecha</th><th>Cuenta</th><th>Beneficiario</th><th class="num">Importe</th><th>Qué falta</th></tr></thead><tbody>
+      ${st.error.map(u=>`<tr data-mov="${u.m.id}"><td class="nowrap">${fmtDate(u.m.date)}</td><td>${esc(accName(u.m.accountId))}</td><td class="ellip">${esc(u.m.payee||movConcept(u.m))}</td><td class="num">${amtHtml(u.m.amountCents,u.m.kind)}</td><td><span class="chip warn">${esc(u.error)}</span></td></tr>`).join('')}
+      </tbody></table></div><p class="faint">Pulsa un movimiento para corregirlo. Los nombres de las cuentas en Bluecoins se ponen en <span class="path">Cuentas → (la cuenta) → Nombre en Bluecoins</span>.</p></section>`:''}
+    ${others.length?`<section class="view-sec"><div class="sec-head"><h2>Lo que no se pasa todavía</h2></div><ul class="bc-others">${others.join('')}</ul></section>`:''}
+    ${done.length?`<section class="view-sec"><div class="sec-head"><h2>Archivos ya importados</h2></div><div class="tbl-wrap"><table class="tbl"><thead><tr><th>Creado</th><th>Archivo</th><th class="num">Movimientos</th><th>Importado en Bluecoins</th></tr></thead><tbody>
+      ${done.slice(0,30).map(x=>`<tr><td class="nowrap">${fmtDT(x.at)}</td><td class="ellip">${esc(x.fileName)}</td><td class="num">${NF_INT.format(x.units.length)}</td><td class="nowrap">${fmtDT(x.importedAt)}${x.failed?` <span class="chip warn">${x.failed} con error, vueltos a pasar</span>`:''}</td></tr>`).join('')}
+      </tbody></table></div></section>`:''}`;
+}
+function bcLotMovs(x){ return x.units.flatMap(u=>u.ids).concat(x.skipIds||[]).map(id=>S.movements.get(id)).filter(m=>m&&m.exportId===x.id); }
+async function bcCreate(){
+  const opts=bcOpts(), st=bcExportState(opts), sel=st.ready.filter(u=>!bcx.off.has(u.m.id));
+  if(!sel.length) return;
+  const rows=sel.flatMap(u=>u.rows), csv=bluecoinsCsv(rows), id=uid(), name=bcFileName(), dates=sel.map(u=>u.m.date).sort();
+  const skipIds=st.skip.flatMap(u=>u.ids);
+  const ok=await commit(`Archivo para Bluecoins creado con ${sel.length} movimientos`,cs=>{
+    for(const mid of sel.flatMap(u=>u.ids).concat(skipIds)){ const m=S.movements.get(mid); if(m&&!m.exportId) cs.put('movements',{...clone(m),exportId:id,changedAfterExport:false}); }
+    cs.put('exports',{id,kind:'bluecoins',at:nowISO(),fileName:name,status:'pendiente',from:dates[0],to:dates[dates.length-1],
+      units:sel.map(bcUnitInfo),skipIds,rowCount:rows.length,opts:{dateFmt:opts.dateFmt,labels:opts.labels,transferCat:opts.transferCat},csv});
+  });
+  if(ok){ bcx.off.clear(); download(csv,name,'text/csv;charset=utf-8'); }
+}
+async function bcRedo(id){
+  const x=S.exports.get(id); if(!x) return;
+  const opts=bcOpts(), movs=x.units.flatMap(u=>u.ids).map(i=>S.movements.get(i)).filter(m=>m&&m.exportId===id).sort((a,b)=>a.date.localeCompare(b.date));
+  const units=bcUnits(movs,opts,id), good=units.filter(u=>u.rows.length), bad=units.filter(u=>u.error), skip=units.filter(u=>u.skip);
+  if(!good.length){ showToast('En este archivo ya no queda nada que pasar: anúlalo'); return; }
+  const rows=good.flatMap(u=>u.rows), csv=bluecoinsCsv(rows), name=bcFileName(), dates=good.map(u=>u.m.date).sort();
+  const ok=await commit(`Archivo para Bluecoins generado de nuevo${bad.length?` · ${bad.length} vuelven a «Hay que corregirlos antes»`:''}`,cs=>{
+    for(const u of units) for(const mid of u.ids){ const m=S.movements.get(mid); if(!m) continue;
+      if(u.error) cs.put('movements',{...clone(m),exportId:null,changedAfterExport:false});
+      else if(m.exportId!==id||m.changedAfterExport) cs.put('movements',{...clone(m),exportId:id,changedAfterExport:false}); }
+    cs.put('exports',{...clone(x),fileName:name,regeneratedAt:nowISO(),from:dates[0],to:dates[dates.length-1],units:good.map(bcUnitInfo),
+      skipIds:[...new Set([...(x.skipIds||[]),...skip.flatMap(u=>u.ids)])],rowCount:rows.length,opts:{dateFmt:opts.dateFmt,labels:opts.labels,transferCat:opts.transferCat},csv});
+  });
+  if(ok) download(csv,name,'text/csv;charset=utf-8');
+}
+async function bcCancel(id){
+  const x=S.exports.get(id); if(!x) return;
+  if(!await askConfirm('Anular el archivo',`<p>Los ${NF_INT.format(x.units.length)} movimientos de <b>${esc(x.fileName)}</b> vuelven a «Listos para pasar». Hazlo solo si <b>no</b> lo has importado en Bluecoins; si ya lo importaste, pulsa «Ya lo he importado en Bluecoins».</p>`,'Anular',true)) return;
+  commit('Archivo para Bluecoins anulado',cs=>{
+    for(const m of bcLotMovs(x)) cs.put('movements',{...clone(m),exportId:null,changedAfterExport:false});
+    cs.del('exports',id);
+  });
+}
+async function bcDone(id){
+  const x=S.exports.get(id); if(!x) return;
+  const changed=x.units.flatMap(u=>u.ids).filter(i=>S.movements.get(i)?.changedAfterExport).length;
+  const html=`<p>Se marcan como pasados a Bluecoins los movimientos de <b>${esc(x.fileName)}</b>.</p>
+    <p>Si Bluecoins dio error en alguna fila, <b>desmárcala</b>: volverá a «Listos para pasar» para el próximo archivo.</p>
+    ${changed?`<ul class="warns"><li>${icon('alert','ic xs')}<span>${changed===1?'Un movimiento cambió':changed+' movimientos cambiaron'} después de crear el archivo. Si lo importaste sin volver a generarlo, corrígelos a mano en Bluecoins (salen en Movimientos con «Cambiados tras exportar»).</span></li></ul>`:''}
+    <div class="bc-done-list">${x.units.map((u,i)=>`<label class="chk"><input type="checkbox" data-bcdone="${i}" checked><span>${fmtDate(u.date)} · ${esc(u.text)} · <b>${money(u.cents)}</b></span></label>`).join('')}</div>`;
+  if(!await askConfirm('Ya importado en Bluecoins',html,'Confirmar')) return;
+  const failed=new Set([...$('cfmBody').querySelectorAll('input[data-bcdone]')].filter(b=>!b.checked).map(b=>+b.dataset.bcdone));
+  const okUnits=x.units.filter((_,i)=>!failed.has(i));
+  commit(`Archivo marcado como importado en Bluecoins${failed.size?` · ${failed.size} vuelven a «Listos para pasar»`:''}`,cs=>{
+    for(const i of failed) for(const mid of x.units[i].ids){ const m=S.movements.get(mid); if(m&&m.exportId===id) cs.put('movements',{...clone(m),exportId:null,changedAfterExport:false}); }
+    cs.put('exports',{...clone(x),status:'importado',importedAt:nowISO(),units:okUnits,failed:failed.size,rowCount:okUnits.reduce((n,u)=>n+u.rows,0),csv:''});
+  });
+}
+async function bcShare(id){
+  const x=S.exports.get(id); if(!x) return;
+  try{ await navigator.share({files:[new File([x.csv],x.fileName,{type:'text/csv'})],title:x.fileName}); }
+  catch(e){ if(e.name!=='AbortError') showToast('No se ha podido compartir: '+e.message,{error:true}); }
+}
+document.addEventListener('change',async e=>{
+  const t=e.target; if(!t.dataset||!t.dataset.bco) return;
+  const o={...(getMeta('bcExport')||{})}, k=t.dataset.bco;
+  o[k]=t.value; if(k==='from'&&(!validYMD(t.value)||t.value===bcDefaultFrom())) o.from='';
+  await setMeta('bcExport',o); bcx.off.clear(); renderExport(); renderSideNotes();
+});
+
 /* ================= Vista: Controles de saldo ================= */
 const openCauses=new Set();
 function renderChecks(){
@@ -4719,7 +4945,23 @@ function renderHelp(){
   <p class="muted">Pendiente: pasos exactos de la web o la app de cada banco.</p>
 
   <div class="bc-only"><h2>Pasar los movimientos a Bluecoins</h2>
-  <p class="muted">Pendiente: se completará cuando esté probado el formato con la importación de calibración.</p></div>
+  <p>Bluecoins no detecta duplicados, así que la app pasa cada movimiento <b>una sola vez</b>. Solo pasa los <b>revisados</b>, con fecha hasta hoy y ya confirmados por el banco. El archivo sigue la plantilla estándar oficial de Bluecoins.</p>
+  <ol><li>En la app, abre <span class="path">Exportar a Bluecoins</span> (en el móvil: <span class="path">Más → Exportar a Bluecoins</span>).</li>
+  <li>Comprueba la fecha <b>Desde</b>. Por defecto es el día siguiente al último movimiento que ya estaba en Bluecoins.</li>
+  <li>Revisa la lista <b>Listos para pasar a Bluecoins</b> y desmarca lo que no quieras pasar ahora. Si sale algo en <b>Hay que corregirlos antes</b>, púlsalo y corrígelo: una categoría con su subcategoría o el nombre de la cuenta en Bluecoins.</li>
+  <li>Pulsa <b>Crear archivo para Bluecoins</b>. Se descarga <span class="path">bluecoins-AAAA-MM-DD-HHMM.csv</span>.</li>
+  <li>Lleva el archivo al móvil:<ul><li>Si lo has creado en el móvil, ya está en <b>Descargas</b> (también puedes usar <b>Compartir</b>).</li>
+    <li>Desde el PC: súbelo a Google Drive o envíatelo por correo y descárgalo en el móvil.</li></ul></li>
+  <li>En Bluecoins: <span class="path">Ajustes → Datos → Excel (.csv)</span> y elige el archivo.</li>
+  <li>En las opciones de importación:<ul><li><b>Codificación de archivos:</b> UTF-8.</li>
+    <li><b>Formato de fecha:</b> dd/MM/yyyy (o el que hayas elegido en <span class="path">Opciones del archivo</span>).</li>
+    <li><b>Ignorar signo del importe:</b> desactivado. El archivo ya lleva el signo correcto; así las devoluciones apuntadas como gasto entran en positivo.</li></ul>Confirma.</li>
+  <li>Bluecoins dice cuántas filas ha importado y cuáles han dado error. Las correctas ya quedan guardadas.</li>
+  <li>Vuelve a la app y pulsa <b>Ya lo he importado en Bluecoins</b>. Desmarca los movimientos que dieron error: vuelven a «Listos para pasar»; corrígelos y van en el próximo archivo.</li></ol>
+  <ul><li><b>Antes de importarlo:</b> <b>Anular</b> devuelve todo a «Listos para pasar»; <b>Volver a generar</b> rehace el archivo con los cambios que hayas hecho.</li>
+  <li><b>Después de importarlo:</b> lo que cambies sale en Movimientos con el estado «Cambiados tras exportar». Corrígelo a mano en Bluecoins (no se vuelve a pasar, porque se duplicaría).</li>
+  <li><b>Etiquetas:</b> en el archivo se separan con espacios, así que las que llevan espacios (p. ej. «Tarjeta Ana💳») no se pasan, salvo que elijas otra cosa en <span class="path">Opciones del archivo → Etiquetas con espacios</span>.</li>
+  <li><b>Transferencias:</b> se pasan como transferencia entre las dos cuentas de Bluecoins. Las de dentro de una misma cuenta de Bluecoins (la liquidación mensual de las tarjetas de BBVA, cuyas compras se apuntan en «BBVA») no hace falta pasarlas.</li></ul></div>
   <h2>Usar o no Bluecoins</h2>
   <p>En <span class="path">Ajustes → Bluecoins</span> elige <b>Lo uso</b> o <b>No lo uso</b>. Con <b>No lo uso</b> se ocultan los nombres de Bluecoins de las cuentas, su saldo en los controles, el estado «Exportado a Bluecoins» y sus avisos. No se borra nada: si vuelves a <b>Lo uso</b>, todo sigue ahí. El historial de Bluecoins se puede importar igualmente.</p>
   </div>`;
@@ -4748,6 +4990,13 @@ document.addEventListener('click',async e=>{
       case 'new-mov': openMovDialog(null); return;
       case 'new-check': openCheckDialog(act.dataset.acc); return;
       case 'export-csv': exportFilterCsv(); return;
+      case 'bc-create': bcCreate(); return;
+      case 'bc-redo': bcRedo(act.dataset.id); return;
+      case 'bc-cancel': bcCancel(act.dataset.id); return;
+      case 'bc-done': bcDone(act.dataset.id); return;
+      case 'bc-share': bcShare(act.dataset.id); return;
+      case 'bc-dl': { const x=S.exports.get(act.dataset.id); if(x) download(x.csv,x.fileName,'text/csv;charset=utf-8'); return; }
+      case 'bc-from-def': { const o={...(getMeta('bcExport')||{}),from:''}; await setMeta('bcExport',o); bcx.off.clear(); renderExport(); renderSideNotes(); return; }
       case 'toggle-filters': ui.mfOpen=!ui.mfOpen; saveUI(); renderMovs(); return;
       case 'clear-filters': Object.assign(ui.mf,{acc:'',from:'',to:'',cat:'',label:'',state:'',q:'',page:0}); saveUI(); renderMovs(); return;
       case 'page-prev': ui.mf.page=Math.max(0,ui.mf.page-1); saveUI(); renderMovs(); $('view').querySelector('.tbl-wrap.tall')?.scrollTo(0,0); return;
@@ -4844,6 +5093,8 @@ document.addEventListener('click',async e=>{
   const sel=t.closest('input[data-sel]');
   if(sel){ sel.checked?selMov.add(sel.dataset.sel):selMov.delete(sel.dataset.sel); renderMovs(); return; }
   if(t.id==='selPage'){ const f=ui.mf, page=filteredMovs().slice(f.page*PAGE,(f.page+1)*PAGE); for(const m of page) t.checked?selMov.add(m.id):selMov.delete(m.id); renderMovs(); return; }
+  const bx=t.closest('input[data-bcx]'); if(bx){ bx.checked?bcx.off.delete(bx.dataset.bcx):bcx.off.add(bx.dataset.bcx); renderExport(); return; }
+  if(t.id==='bcxAll'){ if(t.checked) bcx.off.clear(); else for(const u of bcExportState().ready) bcx.off.add(u.m.id); renderExport(); return; }
   if(t.closest('td.chk')) return;
   const row=t.closest('tr[data-mov]'); if(row){ openMovDialog(row.dataset.mov); return; }
   const ea=t.closest('[data-edit-acc]'); if(ea){ openAccDialog(ea.dataset.editAcc); return; }
@@ -4930,7 +5181,7 @@ boot();
 window.__fin={S,ui,receiptCover,parseAmount,centsToPlain,centsToComma,parseDateCell,excelSerialToYMD,ymd,parseYMD,addDays,daysBetween,
   sniff,decodeText,unzip,readXlsx,readHtmlTables,readXml2003,parseCsv,detectSep,readSpreadsheetBytes,readSpreadsheet,cellText,
   normText,fingerprint,normMovement,normAccount,normCategory,parseCatLines,balancesAt,balanceAt,flowsBetween,causesFor,
-  bluecoinsCsv,movementsToBluecoinsRows,BC_HEADER,commit,undo,backupData,go,ready:()=>!!db,
+  bluecoinsCsv,movementsToBluecoinsRows,BC_HEADER,bcUnits,bcExportState,bcDefaultFrom,bcOpts,bcDate,bcLabels,bcLots,commit,undo,backupData,go,ready:()=>!!db,
   readBiff,readCfbStream,rkValue,IMPORTERS,analyzeFile,chainCheck,findHeader,hdrNorm,guessAccount,classifyRow,buildReview,confirmImport,undoImport,
   syncMerge,localSnapshot,syncNow,encryptPayload,decryptPayload,canonStr,useBc,syncState:()=>({cfg:syncCfg,status:syncRt.status,err:syncRt.err,halt:syncRt.halt,dirty:syncRt.dirty,busy:syncRt.busy}),
   ruleMatches,matchRule,predictMovement,learnFromConcept,dupCandidates,isDup,cardInfo,availableAt,flows,totals,scopeIds,periodRange,insightsFor,rangeTxt,prevRange,budgets,budgetSpent,statsOf,budFlows,extraSuggestions,setExtra,balanceHist,openScopeDialog,applyRulesToFree,bcPlan,confirmBcImport,catLabel,findCounterpart,missingCounterparts,unmatchedTransfers,createCounterparts,needsCounterpart,suggestRuleText,normRule,imp,splitLabels,normLabels,mergeLabels,allLabels,accDailySeries,balDefaultAccs,balAccIds,payeeCandidates,payeeIndex,staleCards};

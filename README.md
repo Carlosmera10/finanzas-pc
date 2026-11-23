@@ -1,6 +1,6 @@
 # Finanzas
 
-App de finanzas (PWA para Chrome en el PC y en el móvil Android), que puede usarse junto a **Bluecoins** o sin él: importa los movimientos que se descargan de los bancos, permite revisarlos y categorizarlos, controla que los saldos cuadren con el banco y prepara la exportación a Bluecoins.
+App de finanzas (PWA para Chrome en el PC y en el móvil Android), que puede usarse junto a **Bluecoins** o sin él: importa los movimientos que se descargan de los bancos, permite revisarlos y categorizarlos, controla que los saldos cuadren con el banco y pasa a Bluecoins lo revisado.
 
 **Dirección:** https://carlosmera10.github.io/finanzas-pc/
 
@@ -32,6 +32,10 @@ App de finanzas (PWA para Chrome en el PC y en el móvil Android), que puede usa
   - Sugerencias de beneficiario en la revisión (sin distinguir tildes, por uso; con el campo vacío, las del concepto) que rellenan la categoría habitual si falta.
   - Control de saldo automático al importar y «Deshacer importación».
 - **Historial de Bluecoins:** importa un archivo con todo lo apuntado en Bluecoins y lo cruza con lo importado del banco (completa los movimientos que coinciden, añade el resto como histórico y lista lo que solo está en Bluecoins). Con «Deshacer importación».
+- **Exportar a Bluecoins:** archivo CSV con la plantilla estándar oficial de Bluecoins (12 columnas), solo con lo revisado y aún no pasado, desde el día siguiente al último movimiento que ya estaba en Bluecoins.
+  - Cada movimiento se pasa una sola vez (Bluecoins no detecta duplicados): el archivo queda pendiente hasta pulsar «Ya lo he importado en Bluecoins», donde se desmarcan las filas que dieron error para el próximo archivo. Antes se puede «Volver a generar» o «Anular».
+  - Transferencias en dos filas (salida y entrada); las de dentro de una misma cuenta de Bluecoins (liquidación de las tarjetas) no se pasan. Tipo según la categoría e importe con su signo (devoluciones en positivo).
+  - Opciones: formato de la fecha, qué hacer con las etiquetas que llevan espacios y nombre de la categoría de las transferencias. Lista de lo que hay que corregir antes (sin categoría, sin subcategoría, cuenta sin nombre en Bluecoins) y de lo que aún no se pasa.
 - **Reglas** de categorización (contiene / empieza por / expresión regular), con «Crear regla» desde un movimiento.
 - **Etiquetas** con espacios y emojis (como en Bluecoins), con sugerencias de las existentes: en la importación (por fila o para todos los nuevos), automáticas por cuenta, en bloque, filtro por etiqueta y gestión (crear, renombrar, eliminar).
 - **Resumen:** patrimonio, mes y año con variaciones, ingresos y gastos de 12 meses, gasto del mes por categoría frente a su media, presupuesto del mes y avisos.

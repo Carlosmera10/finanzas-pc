@@ -83,6 +83,8 @@ UNIT_JS = r'''
   eq(F.splitLabels('Tarjeta Ana💳, Playa 🌴; playa 🌴'), ['Tarjeta Ana💳', 'Playa 🌴'], 'etiquetas con espacios, emojis y sin repetir');
   eq(F.parseCatLines('Comida > Súper\nCasa;Luz\n\nOcio'), [{parent:'Comida',child:'Súper'},{parent:'Casa',child:'Luz'},{parent:'Ocio',child:null}], 'líneas de categorías');
   // CSV de Bluecoins
+  eq([F.bcDate('2026-10-05'), F.bcDate('2026-10-05', 'mdy'), F.bcDate('2026-10-05', 'ymd')], ['05/10/2026', '10/5/2026', '2026-10-05'], 'fechas para Bluecoins');
+  eq([F.bcLabels(['Tarjeta Ana💳', 'Redondeo'], 'skip'), F.bcLabels(['Tarjeta  Ana💳', 'Redondeo'], 'join'), F.bcLabels(['Tarjeta Ana💳'], 'asis')], ['Redondeo', 'Tarjeta_Ana💳 Redondeo', 'Tarjeta Ana💳'], 'etiquetas para Bluecoins');
   eq(F.bluecoinsCsv([{type:'e',date:'01/09/2026',payee:'Café, bar',amount:'-1.80',parent:'Comida',category:'Cafés',accountType:'Bank',account:'Prueba',notes:'',labels:'',status:'',split:''}]),
      '(1)Type,(2)Date,(3)Item or Payee,(4)Amount,(5)Category Type,(6)Category,(7)Account Type,(8)Account,(9)Notes,(10) Label,(11) Status,(12) Split\r\ne,01/09/2026,"Café, bar",-1.80,Comida,Cafés,Bank,Prueba,,,,\r\n', 'CSV de Bluecoins');
   // RK de Excel 97-2003
@@ -300,7 +302,7 @@ def flujo_pc(browser):
     p.reload()
     ok(p.evaluate("() => document.documentElement.dataset.theme") == "dark", "el tema se aplica al abrir (sin parpadeo)")
 
-    for v in ["resumen", "estadisticas", "balance", "presupuestos", "movimientos", "importar", "controles", "cuentas", "categorias", "reglas", "ajustes", "instrucciones"]:
+    for v in ["resumen", "estadisticas", "balance", "presupuestos", "movimientos", "importar", "exportar", "controles", "cuentas", "categorias", "reglas", "ajustes", "instrucciones"]:
         p.click(f".nav-btn[data-view={v}]")
         sin_desborde(p, "PC " + v)
     ok(not errores, "sin errores en la consola (PC): " + "; ".join(errores[:3]))
@@ -655,7 +657,7 @@ def flujo_estrecho(browser, estado):
     print("Ventana estrecha")
     # Cargar los mismos datos para ver las vistas llenas
     p.evaluate("""(d) => window.__fin.commit('', cs => { for (const s of Object.keys(d.stores)) for (const r of d.stores[s]) cs.put(s, r); }, {noUndo:true})""", estado)
-    for v in ["resumen", "estadisticas", "balance", "presupuestos", "movimientos", "importar", "controles", "cuentas", "categorias", "reglas", "ajustes", "instrucciones"]:
+    for v in ["resumen", "estadisticas", "balance", "presupuestos", "movimientos", "importar", "exportar", "controles", "cuentas", "categorias", "reglas", "ajustes", "instrucciones"]:
         p.click("#bnMore")
         p.click(f".nav-btn[data-view={v}]")
         p.wait_for_timeout(250)
@@ -1150,6 +1152,103 @@ def flujo_beneficiarios_y_cuentas(browser):
     ctx.close()
 
 
+def flujo_exportar_bluecoins(browser):
+    """Pantalla «Exportar a Bluecoins»: qué se pasa, el archivo, los lotes y su confirmación."""
+    errores = []
+    ctx, p = nueva_pagina(browser, 1440, 900, errores)
+    print("Exportar a Bluecoins")
+    p.evaluate("""() => { const F = window.__fin;
+      return F.commit('', cs => {
+        const acc = (id, name, bc, kind) => cs.put('accounts', F.normAccount({id, name, bank: 'bbva', kind: kind || 'corriente', bluecoins: {name: bc, type: bc ? 'Banco' : ''}}));
+        acc('A', 'BBVA', 'BBVA'); acc('T', 'Tarjeta', 'BBVA', 'tarjeta_credito'); acc('B', 'ING', 'ING - Cuenta Nómina'); acc('N', 'Otra', '');
+        for (const [id, parent, name, kind] of [['pg', null, 'Ocio', 'gasto'], ['cr', 'pg', 'Restaurantes', 'gasto'], ['pt', null, 'Transporte', 'gasto'], ['cc', 'pt', 'Combustible ', 'gasto'],
+          ['pi', null, 'Trabajo', 'ingreso'], ['cs', 'pi', 'Salario', 'ingreso']]) cs.put('categories', {id, parent, name, kind});
+        const mv = (id, accountId, date, amountCents, o) => cs.put('movements', F.normMovement(Object.assign({id, accountId, date, amountCents, kind: amountCents < 0 ? 'gasto' : 'ingreso',
+          source: 'import', reviewed: true, payee: 'P ' + id}, o)));
+        mv('h0', 'A', '2026-10-10', -100, {source: 'bluecoins', historic: true, exportId: 'bluecoins', categoryId: 'cr'});
+        mv('o1', 'A', '2026-10-05', -700, {categoryId: 'cr'});
+        mv('m1', 'A', '2026-10-12', -1234, {categoryId: 'cr', payee: 'Café, bar', labels: ['Tarjeta Ana💳', 'Redondeo'], notes: 'línea1\\nlínea2'});
+        mv('m2', 'A', '2026-10-13', 289, {kind: 'gasto', categoryId: 'cc', payee: 'Gasolinera'});
+        mv('m3', 'B', '2026-10-14', 100000, {categoryId: 'cs', payee: 'Nómina'});
+        mv('t1', 'A', '2026-10-15', -5000, {kind: 'transferencia', transferPairId: 'p1', transferAccountId: 'B', payee: 'Traspaso'});
+        mv('t2', 'B', '2026-10-15', 5000, {kind: 'transferencia', transferPairId: 'p1', transferAccountId: 'A', reviewed: false});
+        mv('t3', 'A', '2026-10-15', -3000, {kind: 'transferencia', transferPairId: 'p2', transferAccountId: 'T', reviewed: false});
+        mv('t4', 'T', '2026-10-15', 3000, {kind: 'transferencia', transferPairId: 'p2', transferAccountId: 'A', reviewed: false});
+        mv('m4', 'A', '2026-10-16', -400, {});
+        mv('m5', 'N', '2026-10-16', -500, {categoryId: 'cr'});
+        mv('m6', 'A', '2026-10-17', -600, {categoryId: 'cr', reviewed: false});
+        mv('m7', 'A', '2026-10-17', -800, {categoryId: 'cr', pending: true});
+        mv('m8', 'A', '2099-01-01', -900, {categoryId: 'cr'});
+        mv('m9', 'A', '2026-10-18', -950, {categoryId: 'pg'});
+      }, {noUndo: true}); }""")
+    st = p.evaluate("""() => { const s = window.__fin.bcExportState(); const ids = l => l.map(u => u.ids.join('+'));
+      return {from: s.from, ready: ids(s.ready), skip: ids(s.skip), error: ids(s.error), norev: ids(s.norev), pend: ids(s.pend), future: s.future.map(m => m.id), before: s.before.map(m => m.id)}; }""")
+    ok(st == {"from": "2026-10-11", "ready": ["m1", "m2", "m3", "t1+t2"], "skip": ["t3+t4"], "error": ["m4", "m5", "m9"], "norev": ["m6"], "pend": ["m7"], "future": ["m8"], "before": ["o1"]},
+       f"clasifica lo que se puede pasar → {st}")
+    ok(p.inner_text("#navExpBadge") == "4", "el menú muestra los 4 listos para pasar")
+    p.click(".nav-btn[data-view=exportar]")
+    txt = p.inner_text("#view")
+    ok("Hay que corregirlos antes" in txt and "Sin categoría" in txt and "no tiene nombre en Bluecoins" in txt and "Bluecoins necesita también la subcategoría" in txt, "lista lo que hay que corregir y por qué")
+    ok("No se pasan estas etiquetas: Tarjeta Ana💳" in txt, "avisa de las etiquetas con espacios")
+    ok("1 sin revisar" in txt and "1 pendientes en el banco" in txt and "1 con fecha futura" in txt and "1 que no hace falta pasar" in txt and "1 anteriores al 11/10/2026" in txt, "explica lo que no se pasa todavía")
+    p.uncheck("input[data-bcx=m3]")
+    ok("Crear archivo para Bluecoins (3)" in p.inner_text("#view"), "al desmarcar uno quedan 3")
+    with p.expect_download() as dl:
+        p.click("[data-act=bc-create]")
+    d = dl.value
+    csv = open(d.path(), encoding="utf-8", newline="").read()
+    esperado = ("(1)Type,(2)Date,(3)Item or Payee,(4)Amount,(5)Category Type,(6)Category,(7)Account Type,(8)Account,(9)Notes,(10) Label,(11) Status,(12) Split\r\n"
+                "e,12/10/2026,\"Café, bar\",-12.34,Ocio,Restaurantes,Banco,BBVA,línea1 / línea2,Redondeo,,\r\n"
+                "e,13/10/2026,Gasolinera,2.89,Transporte,\"Combustible \",Banco,BBVA,,,,\r\n"
+                "t,15/10/2026,Traspaso,-50.00,(Transferir),(Transferir),Banco,BBVA,,,,\r\n"
+                "t,15/10/2026,Traspaso,50.00,(Transferir),(Transferir),Banco,ING - Cuenta Nómina,,,,\r\n")
+    ok(csv == esperado, "el archivo sigue la plantilla de Bluecoins" + ("" if csv == esperado else " → " + repr(csv)))
+    ok(d.suggested_filename.startswith("bluecoins-") and d.suggested_filename.endswith(".csv"), f"nombre del archivo → {d.suggested_filename}")
+    r = p.evaluate("""() => { const F = window.__fin, g = id => F.S.movements.get(id).exportId, lot = F.bcLots()[0];
+      return [['m1', 'm2', 't1', 't2', 't3', 't4'].every(id => g(id) === lot.id), g('m3'), lot.status, lot.units.length, lot.rowCount]; }""")
+    ok(r == [True, None, "pendiente", 3, 4], f"marca lo pasado con su archivo (también la liquidación de la tarjeta) → {r}")
+    ok(p.inner_text("#navExpBadge") == "!" and "Archivo pendiente de importar" in p.inner_text("#view"), "archivo pendiente en la pantalla y en el menú")
+    # Un cambio antes de importarlo: volver a generar
+    p.evaluate("""() => { const F = window.__fin, m = F.S.movements.get('m1'); return F.commit('', cs => cs.put('movements', Object.assign(structuredClone(m), {payee: 'Cafetería', changedAfterExport: true})), {noUndo: true}); }""")
+    ok("Un movimiento ha cambiado después de crear el archivo" in p.inner_text("#view"), "avisa de lo cambiado después de crear el archivo")
+    with p.expect_download() as dl2:
+        p.click("[data-act=bc-redo]")
+    csv2 = open(dl2.value.path(), encoding="utf-8", newline="").read()
+    ok("e,12/10/2026,Cafetería,-12.34" in csv2 and not p.evaluate("() => window.__fin.S.movements.get('m1').changedAfterExport"), "vuelve a generarlo con el cambio")
+    # Ya importado, con una fila que dio error en Bluecoins
+    p.click("[data-act=bc-done]")
+    p.uncheck("input[data-bcdone='1']")
+    p.click("#cfmOk")
+    p.wait_for_selector("text=1 vuelven a «Listos para pasar»")
+    r = p.evaluate("""() => { const F = window.__fin, lot = F.bcLots()[0]; return [lot.status, lot.units.length, lot.failed, F.S.movements.get('m2').exportId, F.bcExportState().ready.map(u => u.m.id)]; }""")
+    ok(r == ["importado", 2, 1, None, ["m2", "m3"]], f"lo que dio error vuelve a «Listos para pasar» → {r}")
+    ok("Archivos ya importados" in p.inner_text("#view"), "historial de archivos")
+    # Anular un archivo sin importar
+    with p.expect_download():
+        p.click("[data-act=bc-create]")
+    p.click("[data-act=bc-cancel]")
+    p.click("#cfmOk")
+    p.wait_for_selector("text=Archivo para Bluecoins anulado")
+    r = p.evaluate("() => [window.__fin.S.movements.get('m3').exportId, window.__fin.bcLots().length, window.__fin.bcExportState().ready.length]")
+    ok(r == [None, 1, 2], f"anular lo devuelve todo → {r}")
+    # Fecha «Desde» y formato de fecha
+    p.fill("input[data-bco=from]", "2026-10-01")
+    p.dispatch_event("input[data-bco=from]", "change")
+    p.wait_for_function("window.__fin.bcExportState().ready.length === 3")
+    ok("Volver al 11/10/2026" in p.inner_text("#view"), "con otra fecha «Desde» entra el anterior y se puede volver a la de siempre")
+    p.click("details.bc-opts summary")
+    p.select_option("select[data-bco=dateFmt]", "mdy")
+    p.wait_for_function("window.__fin.bcOpts().dateFmt === 'mdy'")
+    ok(p.evaluate("() => window.__fin.bcExportState().ready[0].rows[0].date") == "10/5/2026", "formato de fecha como la plantilla")
+    # Sin Bluecoins
+    p.click(".nav-btn[data-view=ajustes]")
+    p.click("#bcSeg button[data-bc='0']")
+    p.wait_for_function("document.body.classList.contains('no-bc')")
+    ok(not p.is_visible(".nav-btn[data-view=exportar]"), "con «No lo uso» desaparece del menú")
+    ok(not errores, "sin errores en la consola (exportar a Bluecoins): " + "; ".join(errores[:3]))
+    ctx.close()
+
+
 with sync_playwright() as pw:
     b = pw.chromium.launch()
     flujo_importacion(b)
@@ -1158,6 +1257,7 @@ with sync_playwright() as pw:
     flujo_ciclo_tarjeta(b)
     flujo_transferencias(b)
     flujo_beneficiarios_y_cuentas(b)
+    flujo_exportar_bluecoins(b)
     est = flujo_pc(b)
     est2 = flujo_estadisticas(b)
     flujo_estrecho(b, est)
